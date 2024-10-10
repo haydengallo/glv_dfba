@@ -1,0 +1,171 @@
+### Hayden Gallo
+### Bucci Lab
+### 10/9/24
+
+import numpy as np
+#from dfba import DfbaModel, ExchangeFlux, KineticVariable
+import cobra
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+import math
+from numba import njit
+from scipy.integrate import odeint
+from scipy.integrate import solve_ivp
+from scipy.optimize import least_squares
+from scipy.optimize import curve_fit
+import sys
+import os
+import openpyxl
+import gurobipy
+
+import pymc as pm
+import pytensor
+import pytensor.tensor as pt
+from pymc.ode import DifferentialEquation
+from pytensor.compile.ops import as_op
+import arviz as az
+
+import time
+import joblib
+import multiprocessing
+from scipy.stats import truncnorm
+import copy
+from pathlib import Path
+
+### script for running glv_dfba inference
+from helper_functions import *
+
+wd = '/Users/haydengallo/Documents/Bucci_Lab'
+
+### loading cobra models
+
+### for some reason, sbml/xml models give different initial growth rates than same model but in .mat format???? why 
+
+p_copri_model_1 = cobra.io.load_matlab_model('/Users/haydengallo/cobratoolbox/panSpeciesModels/panPrevotella_copri.mat')  
+eb_model_1 = cobra.io.load_matlab_model('/Users/haydengallo/cobratoolbox/panSpeciesModels/panEubacterium_limosum.mat') 
+
+p_copri_model_2 = cobra.io.load_matlab_model('/Users/haydengallo/cobratoolbox/panSpeciesModels/panPrevotella_copri.mat')  
+eb_model_2 = cobra.io.load_matlab_model('/Users/haydengallo/cobratoolbox/panSpeciesModels/panEubacterium_limosum.mat') 
+
+p_copri_model_3 = cobra.io.load_matlab_model('/Users/haydengallo/cobratoolbox/panSpeciesModels/panPrevotella_copri.mat')  
+eb_model_3 = cobra.io.load_matlab_model('/Users/haydengallo/cobratoolbox/panSpeciesModels/panEubacterium_limosum.mat') 
+
+p_copri_model_4 = cobra.io.load_matlab_model('/Users/haydengallo/cobratoolbox/panSpeciesModels/panPrevotella_copri.mat')  
+eb_model_4 = cobra.io.load_matlab_model('/Users/haydengallo/cobratoolbox/panSpeciesModels/panEubacterium_limosum.mat') 
+
+p_copri_model_5 = cobra.io.load_matlab_model('/Users/haydengallo/cobratoolbox/panSpeciesModels/panPrevotella_copri.mat')  
+eb_model_5 = cobra.io.load_matlab_model('/Users/haydengallo/cobratoolbox/panSpeciesModels/panEubacterium_limosum.mat') 
+
+eb_models = [p_copri_model_1, p_copri_model_2, p_copri_model_3, p_copri_model_4, p_copri_model_5]
+p_copri_models = [eb_model_1, eb_model_2, eb_model_3, eb_model_4, eb_model_5]
+
+
+#fp_model = cobra.io.load_matlab_model('/Users/haydengallo/cobratoolbox/panSpeciesModels/panFaecalibacterium_prausnitzii.mat') 
+
+#fp_strain_model = cobra.io.load_matlab_model('/Users/haydengallo/cobratoolbox/AGORA-2/AGORA_2_mat/Faecalibacterium_prausnitzii_ERR1022327.mat')
+
+
+### loading initial metabolite data
+
+#agora_media = pd.read_csv('/Users/haydengallo/Documents/Bucci_Lab/metconsin/AGORA_Media/EU_average_AGORA.tsv', sep = '\t', index_col=0)
+
+### with additions for EB to grow
+
+pyg_test_all_add = [['EX_26dap_M(e)','1'],['EX_2dmmq8(e)','1'],['EX_cgly(e)','1'],['EX_mqn8(e)','1'],['EX_o2(e)','1'],['EX_orn(e)','1'],['EX_sheme(e)','1'],['EX_spmd(e)','1'],['EX_q8(e)','1'],['EX_pydx(e)','1'],['EX_nac(e)','1'],['EX_lys_L(e)','1'],['EX_hxan(e)','1'],['EX_ade(e)','1'],['EX_thymd(e)','1'],['EX_thm(e)','1'],['EX_ribflv(e)','1'],['EX_pnto_R(e)','1'],['EX_nac(e)','1'],['EX_fol(e)','1'],['EX_zn2(e)','1'],['EX_mn2(e)','1'],['EX_fe3(e)','1'],['EX_cu2(e)','1'],['EX_cobalt2(e)','1'],['EX_n2(e)','227.8571429'],['EX_na1(e)','20.51163798'],['EX_cl(e)','5.941065976'],['EX_ca2(e)','0.173941043'],['EX_fe2(e)','0.016053362'],['EX_mg2(e)','0.474477191'],['EX_k(e)','35.39748582'],['EX_so4(e)','0.710983412'],['EX_pi(e)','18.29826648'],['EX_ala_L(e)','16.89227108'],['EX_arg_L(e)','5.338568575'],['EX_asn_L(e)','1.286718791'],['EX_asp_L(e)','10.81893313'],['EX_Lcystin(e)','0.187272152'],['EX_glu_L(e)','18.56754922'],['EX_gln_L(e)','0.205274178'],['EX_gly(e)','20.3151851'],['EX_his_L(e)','3.319218598'],['EX_ile_L(e)','8.195159139'],['EX_leu_L(e)','11.2826377'],['EX_lys_l(e)','9.884397018'],['EX_met_L(e)','2.144657123'],['EX_phe_L(e)','6.083829725'],['EX_pro_L(e)','11.89938505'],['EX_ser_L(e)','4.424652451'],['EX_thr_L(e)','3.567830759'],['EX_trp_L(e)','0.685504997'],['EX_tyr_L(e)','1.683306566'],['EX_val_L(e)','10.37149589'],['EX_glc_D(e)','27.7537245498346'],['EX_hco3(e)','1.190379826'],['EX_phyQ(e)','0.002172408'],['EX_etoh(e)','3.237913066'],['EX_pheme(e)','0.0076693'],['EX_oh1(e)','0.099987502'],['EX_cys_L(e)','2.846894039'],['EX_M02144(e)','2.846894039'],['EX_h2o(e)','55013.2623'],['EX_h(e)','6.30957E-05']]
+#pyg_test_all_add = [['EX_26dap_M[e]','1'],['EX_2dmmq8[e]','1'],['EX_cgly[e]','1'],['EX_mqn8[e]','1'],['EX_o2[e]','1'],['EX_orn[e]','1'],['EX_sheme[e]','1'],['EX_spmd[e]','1'],['EX_q8[e]','1'],['EX_pydx[e]','1'],['EX_nac[e]','1'],['EX_lys_L[e]','1'],['EX_hxan[e]','1'],['EX_ade[e]','1'],['EX_thymd[e]','1'],['EX_thm[e]','1'],['EX_ribflv[e]','1'],['EX_pnto_R[e]','1'],['EX_nac[e]','1'],['EX_fol[e]','1'],['EX_zn2[e]','1'],['EX_mn2[e]','1'],['EX_fe3[e]','1'],['EX_cu2[e]','1'],['EX_cobalt2[e]','1'],['EX_n2[e]','227.8571429'],['EX_na1[e]','20.51163798'],['EX_cl[e]','5.941065976'],['EX_ca2[e]','0.173941043'],['EX_fe2[e]','0.016053362'],['EX_mg2[e]','0.474477191'],['EX_k[e]','35.39748582'],['EX_so4[e]','0.710983412'],['EX_pi[e]','18.29826648'],['EX_ala_L[e]','16.89227108'],['EX_arg_L[e]','5.338568575'],['EX_asn_L[e]','1.286718791'],['EX_asp_L[e]','10.81893313'],['EX_Lcystin[e]','0.187272152'],['EX_glu_L[e]','18.56754922'],['EX_gln_L[e]','0.205274178'],['EX_gly[e]','20.3151851'],['EX_his_L[e]','3.319218598'],['EX_ile_L[e]','8.195159139'],['EX_leu_L[e]','11.2826377'],['EX_lys_l[e]','9.884397018'],['EX_met_L[e]','2.144657123'],['EX_phe_L[e]','6.083829725'],['EX_pro_L[e]','11.89938505'],['EX_ser_L[e]','4.424652451'],['EX_thr_L[e]','3.567830759'],['EX_trp_L[e]','0.685504997'],['EX_tyr_L[e]','1.683306566'],['EX_val_L[e]','10.37149589'],['EX_glc_D[e]','27.7537245498346'],['EX_hco3[e]','1.190379826'],['EX_phyQ[e]','0.002172408'],['EX_etoh[e]','3.237913066'],['EX_pheme[e]','0.0076693'],['EX_oh1[e]','0.099987502'],['EX_cys_L[e]','2.846894039'],['EX_M02144[e]','2.846894039'],['EX_h2o[e]','55013.2623'],['EX_h[e]','6.30957E-05']]
+#pyg_test_all_add = [['EX_q8[e]','1'],['EX_pydx[e]','1'],['EX_nac[e]','1'],['EX_lys_L[e]','1'],['EX_hxan[e]','1'],['EX_ade[e]','1'],['EX_thymd[e]','1'],['EX_thm[e]','1'],['EX_ribflv[e]','1'],['EX_pnto_R[e]','1'],['EX_nac[e]','1'],['EX_fol[e]','1'],['EX_zn2[e]','1'],['EX_mn2[e]','1'],['EX_fe3[e]','1'],['EX_cu2[e]','1'],['EX_cobalt2[e]','1'],['EX_n2[e]','227.8571429'],['EX_na1[e]','20.51163798'],['EX_cl[e]','5.941065976'],['EX_ca2[e]','0.173941043'],['EX_fe2[e]','0.016053362'],['EX_mg2[e]','0.474477191'],['EX_k[e]','35.39748582'],['EX_so4[e]','0.710983412'],['EX_pi[e]','18.29826648'],['EX_ala_L[e]','16.89227108'],['EX_arg_L[e]','5.338568575'],['EX_asn_L[e]','1.286718791'],['EX_asp_L[e]','10.81893313'],['EX_Lcystin[e]','0.187272152'],['EX_glu_L[e]','18.56754922'],['EX_gln_L[e]','0.205274178'],['EX_gly[e]','20.3151851'],['EX_his_L[e]','3.319218598'],['EX_ile_L[e]','8.195159139'],['EX_leu_L[e]','11.2826377'],['EX_lys_l[e]','9.884397018'],['EX_met_L[e]','2.144657123'],['EX_phe_L[e]','6.083829725'],['EX_pro_L[e]','11.89938505'],['EX_ser_L[e]','4.424652451'],['EX_thr_L[e]','3.567830759'],['EX_trp_L[e]','0.685504997'],['EX_tyr_L[e]','1.683306566'],['EX_val_L[e]','10.37149589'],['EX_glc_D[e]','27.7537245498346'],['EX_hco3[e]','1.190379826'],['EX_phyQ[e]','0.002172408'],['EX_etoh[e]','3.237913066'],['EX_pheme[e]','0.0076693'],['EX_oh1[e]','0.099987502'],['EX_cys_L[e]','2.846894039'],['EX_M02144[e]','2.846894039'],['EX_h2o[e]','55013.2623'],['EX_h[e]','6.30957E-05']]
+pyg_test_all_add = np.array(pyg_test_all_add)
+
+pyg_test_all_add = pd.DataFrame(pyg_test_all_add)
+
+pyg_test_all_add.columns = ['reaction','fluxValue']
+pyg_test_all_add['fluxValue'] =  np.double(pyg_test_all_add['fluxValue'])
+
+
+rcm_add = [['EX_ribflv(e)', '0.01'],['EX_thymd(e)', '0.01'],['EX_thm(e)', '0.01'],['EX_spmd(e)', '0.01'],['EX_sheme(e)', '0.01'],['EX_q8(e)', '0.01'],['EX_pheme(e)', '0.01'],['EX_fol(e)', '0.01'],['EX_2dmmq8(e)', '0.01'],['EX_26dap_M(e)', '0.01'],['EX_cobalt2(e)', '0.01'],['EX_cu2(e)', '0.01'],['EX_fe3(e)', '0.01'],['EX_mn2(e)', '0.01'],['EX_zn2(e)', '0.01'],['EX_na1(e)', '49.13878039'],['EX_cl(e)', '35.42367951'],['EX_n2(e)', '221.9285714'],['EX_ca2(e)', '0.083087978'],['EX_fe2(e)', '0.009273883'],['EX_mg2(e)', '0.216827813'],['EX_k(e)', '10.45186108'],['EX_so4(e)', '0.913009078'],['EX_pi(e)', '4.844687796'],['EX_ala_L(e)', '16.70146138'],['EX_arg_L(e)', '5.384491745'],['EX_asn_L(e)', '0.908272088'],['EX_asp_L(e)', '9.083395943'],['EX_glu_L(e)', '17.32518669'],['EX_gly(e)', '25.44393675'],['EX_his_L(e)', '2.120432852'],['EX_ile_L(e)', '6.174957118'],['EX_leu_L(e)', '9.323422908'],['EX_lys_L(e)', '7.168752993'],['EX_met_L(e)', '1.702321591'],['EX_phe_L(e)', '5.193956124'],['EX_pro_L(e)', '11.3782441'],['EX_ser_L(e)', '3.882275699'],['EX_thr_L(e)', '2.837474815'],['EX_trp_L(e)', '0.56309339'],['EX_tyr_L(e)', '1.357683329'],['EX_val_L(e)', '7.89599481'], ['EX_Lcystin(e)', '0.108201688'], ['EX_gln_L(e)', '0.109479562'],['EX_glc_D(e)', '27.75372455'],['EX_cys_L(e)', '2.846894039'],['EX_M02144(e)', '2.846894039'],['EX_h2o(e)', '55509.29781'],['EX_h(e)', '0.000158489']]
+rcm_add = np.array(rcm_add)
+
+rcm_add = pd.DataFrame(rcm_add)
+
+rcm_add.columns = ['reaction','fluxValue']
+rcm_add['fluxValue'] =  np.double(rcm_add['fluxValue'])
+
+
+
+pyg_test_all_add.shape
+
+
+
+pyg_media_dict = dict(zip(pyg_test_all_add['reaction'], pyg_test_all_add['fluxValue']))
+rcm_media_dict = dict(zip(rcm_add['reaction'], rcm_add['fluxValue']))
+#rcm_media_dict
+
+
+
+### load in hanks data 
+
+cerillo_test_data = pd.read_csv('/Users/haydengallo/Documents/Bucci_Lab/cerillo_data/averaged_cerillo.csv', index_col=0)
+
+cerillo_test_data.shape
+
+cerillo_test_data.head()
+
+
+test_df = cerillo_test_data[(cerillo_test_data['Group_together'] == 'PCwEB') | (cerillo_test_data['Group_together'] == 'EBwPC')]
+microbe_data = test_df.pivot(index='Time', columns= 'Group_together', values = 'OD').reset_index()
+
+
+### should probably make a directory to store inference 
+data_dir = str(wd + '/glv_dfba_testing_data/testing')
+
+if os.path.exists(data_dir):
+    print('already exists')
+else:
+    os.mkdir(data_dir)
+
+model_names = ['eb', 'p_copri']
+#models = [eb_model, p_copri_model]
+#init_abun = [.0023, .002633]
+init_abun = [.002, .002]
+
+### so far must manually set initial values of parameters
+### also might want to manually specify bounds too, could be something good 
+
+# monoculture growth rate of EB
+r_1 = 0.04198
+# monoculture growth rate of P. copri
+r_2 = .115
+# co culture growth rate of EB
+gamma_1 = 5
+# co culture growth rate of P. copri # should be small b/c p. copri grows pretty much the same with or without EB
+gamma_2 = 0
+# intraspecies competition of EB
+a_1 = -10
+# intraspecies competition of P. copri
+a_2 = -2.9
+
+
+params = np.array([r_1, r_2, gamma_1, gamma_2, a_1, a_2])
+
+total_sim_time = 460
+num_t_steps = 460
+
+
+
+### first perform original least squares fit of glv
+
+glv_out, params_ls, time = ls_glv_fit(init_abun = init_abun, params = params, total_sim_time=total_sim_time, time_steps=num_t_steps, microbe_data=microbe_data)
+
+### next perform bayesian glv fit using params_ls
+
+model = bayesian_glv_setup(params_init=params_ls, microbe_data=microbe_data, init_abun=init_abun)
+(pm.model_to_graphviz(model=model))
+
+trace = bayesian_glv_run(model=model, num_samples=10000, chains =10)
+trace_save_name = str(data_dir + '/trace.nc')
+trace.to_netcdf(trace_save_name)
+
+### next sample from posterior of bayesian fit 
+
+param_dict = posterior_param_samps(num_samples=5, glv_trace=trace)

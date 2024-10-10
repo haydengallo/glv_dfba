@@ -369,7 +369,7 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
 
 
 # function that calculates residuals based on a given theta
-def ode_model_resid(params):
+def ode_model_resid(params, microbe_data, init_abun):
     return (
         microbe_data.iloc[:,1:] - odeint(generalized_gLV, y0 = init_abun, t=microbe_data['Time'], args = (params,))
     ).values.flatten()
@@ -395,7 +395,7 @@ def ls_glv_fit(init_abun, params, total_sim_time, time_steps, microbe_data):
 
     init_abun = np.array(init_abun)
     
-    results = least_squares(ode_model_resid, x0=params, bounds=([0, 0, 0, -10, -10, -10], [10, 10, 10, 10, 0, 0]), xtol = 1e-10)
+    results = least_squares(ode_model_resid, x0=params, bounds=([0, 0, 0, -10, -10, -10], [10, 10, 10, 10, 0, 0]), xtol = 1e-10, args = (microbe_data, init_abun))
 
     params = results.x
     
@@ -415,11 +415,15 @@ def ls_glv_fit(init_abun, params, total_sim_time, time_steps, microbe_data):
 ### https://www.pymc.io/projects/examples/en/latest/ode_models/ODE_Lotka_Volterra_multiple_ways.html
 
 # decorator with input and output types a Pytensor double float tensors
-@as_op(itypes=[pt.dvector], otypes=[pt.dmatrix])
-def pytensor_forward_model_matrix(params_ls):
-    return odeint(func=generalized_gLV, y0=init_abun, t=microbe_data['Time'], args=(params_ls,))
+@as_op(itypes=[pt.dvector, pt.dvector, pt.dmatrix], otypes=[pt.dmatrix])
+def pytensor_forward_model_matrix(params_ls, init_abun, microbe_data):
 
-def bayesian_glv_setup(params_init, microbe_data):
+    time_values = microbe_data[:,0]
+    #print(time_values)
+
+    return odeint(func=generalized_gLV, y0=init_abun, t=time_values, args=(params_ls,))
+
+def bayesian_glv_setup(params_init, microbe_data, init_abun):
 
     #params = results.x  # least squares solution used to inform the priors
     with pm.Model() as model:
@@ -433,9 +437,10 @@ def bayesian_glv_setup(params_init, microbe_data):
         a_2 = pm.TruncatedNormal("a_2", mu=params_init[5], sigma=1, upper=0, initval=params_init[5])
         sigma = pm.HalfNormal("sigma", 10)
 
-        # Ode solution function
+
+        #Ode solution function
         ode_solution = pytensor_forward_model_matrix(
-            pm.math.stack([r_1, r_2, gamma_1, gamma_2, a_1, a_2])
+            pm.math.stack([r_1, r_2, gamma_1, gamma_2, a_1, a_2]), pm.math.stack(init_abun), pt.as_tensor(microbe_data.values)
         )
 
         # Likelihood
