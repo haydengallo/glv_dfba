@@ -32,6 +32,7 @@ import multiprocessing
 from scipy.stats import truncnorm
 import copy
 from pathlib import Path
+import subprocess
 
 ### script for running glv_dfba inference
 from helper_functions import *
@@ -169,3 +170,58 @@ trace.to_netcdf(trace_save_name)
 ### next sample from posterior of bayesian fit 
 
 param_dict = posterior_param_samps(num_samples=5, glv_trace=trace)
+
+
+
+
+### Submitting batch jobs to the cluster
+
+
+
+# Job and file paths
+job_name = "glv_dfba_testing"
+base_output_dir = "/home/hayden.gallo-umw/glv_dfba_testing/test_1"
+output_dir = "/home/hayden.gallo-umw/job_output/out_logs"
+error_dir = "/home/hayden.gallo-umw/job_output/error_logs"
+python_script_path = "/home/hayden.gallo-umw/scripts/glv_dfba_hpc_batch.py"
+
+os.makedirs(base_output_dir, exist_ok=True)
+
+# Iterate over seeds and submit jobs
+for i in range(0, len(param_dict)):
+    params = np.array([param_dict['r_1']['samples'][i], param_dict['r_2']['samples'][i], param_dict['gamma_1']['samples'][i], param_dict['gamma_2']['samples'][i], param_dict['a_1']['samples'][i], param_dict['a_2']['samples'][i]])    unique_job_name = f"{job_name}_seed_{seed}"
+    params_str = ','.join(map(str, params))
+    unique_job_name = f"{job_name}_i_"
+    job_dir = os.path.join(base_output_dir, unique_job_name)
+    os.makedirs(job_dir, exist_ok=True)
+
+    batch_script = f"{base_output_dir}/{unique_job_name}.lsf"
+
+    # Create the batch script content
+    batch_content = f"""#!/bin/bash
+#BSUB -J {unique_job_name}
+#BSUB -o {output_dir}/{unique_job_name}.%J
+#BSUB -e {error_dir}/{unique_job_name}.%J
+#BSUB -q short
+#BSUB -W 4:00
+#BSUB -n 1
+#BSUB -R "span[hosts=1]"
+#BSUB -R "rusage[mem=5GB]"
+
+# Execute the Python script with the seed parameter
+python {python_script_path} --params {params_str}
+"""
+
+    # Write the batch script to a file
+    with open(batch_script, 'w') as file:
+        file.write(batch_content)
+
+    # Submit the job using 'bsub'
+    try:
+        subprocess.run(["bsub", "<", batch_script], check=True)
+        print(f"Submitted job for params {params}")
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to submit job for params {params}: {e}")
+
+
+
