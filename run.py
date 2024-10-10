@@ -192,8 +192,8 @@ for i in range(0, len(param_dict)):
     params = np.array([param_dict['r_1']['samples'][i], param_dict['r_2']['samples'][i], param_dict['gamma_1']['samples'][i], param_dict['gamma_2']['samples'][i], param_dict['a_1']['samples'][i], param_dict['a_2']['samples'][i]])    unique_job_name = f"{job_name}_seed_{seed}"
     params_str = ','.join(map(str, params))
     unique_job_name = f"{job_name}_i_"
-    job_dir = os.path.join(base_output_dir, unique_job_name)
-    os.makedirs(job_dir, exist_ok=True)
+    job_save_dir = os.path.join(base_output_dir, unique_job_name)
+    os.makedirs(job_save_dir, exist_ok=True)
 
     batch_script = f"{base_output_dir}/{unique_job_name}.lsf"
 
@@ -209,7 +209,7 @@ for i in range(0, len(param_dict)):
 #BSUB -R "rusage[mem=5GB]"
 
 # Execute the Python script with the seed parameter
-python {python_script_path} --params {params_str}
+python {python_script_path} --params {params_str} --job_save_dir {job_save_dir}
 """
 
     # Write the batch script to a file
