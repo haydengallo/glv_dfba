@@ -115,7 +115,7 @@ cerillo_test_data.head()
 
 test_df = cerillo_test_data[(cerillo_test_data['Group_together'] == 'PCwEB') | (cerillo_test_data['Group_together'] == 'EBwPC')]
 microbe_data = test_df.pivot(index='Time', columns= 'Group_together', values = 'OD').reset_index()
-
+print(microbe_data.head())
 
 ### should probably make a directory to store inference 
 data_dir = str(wd + '/glv_dfba_testing_data/testing')
@@ -157,7 +157,7 @@ num_t_steps = 460
 ### first perform original least squares fit of glv
 
 glv_out, params_ls, time = ls_glv_fit(init_abun = init_abun, params = params, total_sim_time=total_sim_time, time_steps=num_t_steps, microbe_data=microbe_data)
-
+print(params_ls)
 ### next perform bayesian glv fit using params_ls
 
 model = bayesian_glv_setup(params_init=params_ls, microbe_data=microbe_data, init_abun=init_abun)
@@ -190,7 +190,8 @@ os.makedirs(base_output_dir, exist_ok=True)
 # Iterate over seeds and submit jobs
 for i in range(0, len(param_dict)):
     # build parameter np.array
-    params = np.array([param_dict['r_1']['samples'][i], param_dict['r_2']['samples'][i], param_dict['gamma_1']['samples'][i], param_dict['gamma_2']['samples'][i], param_dict['a_1']['samples'][i], param_dict['a_2']['samples'][i]])    unique_job_name = f"{job_name}_seed_{seed}"
+    params = np.array([param_dict['r_1']['samples'][i], param_dict['r_2']['samples'][i], param_dict['gamma_1']['samples'][i], param_dict['gamma_2']['samples'][i], param_dict['a_1']['samples'][i], param_dict['a_2']['samples'][i]])    
+    #unique_job_name = f"{job_name}_seed_{seed}"
     # convert np.array to comma separated list for later parsing
     params_str = ','.join(map(str, params))
     # take model_names list and make comma sep list
