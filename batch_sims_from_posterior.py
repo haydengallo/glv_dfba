@@ -40,23 +40,35 @@ import subprocess
 from helper_functions import *
 import argparse
 
+### For now need to manually load models
+p_copri_model = cobra.io.load_matlab_model('/Users/haydengallo/cobratoolbox/panSpeciesModels/panPrevotella_copri.mat')  
+eb_model = cobra.io.load_matlab_model('/Users/haydengallo/cobratoolbox/panSpeciesModels/panEubacterium_limosum.mat') 
+
+models = [eb_model, p_copri_model]
+
 # Create an argument parser
 parser = argparse.ArgumentParser(description='Process job parameters and save path.')
 parser.add_argument('--params', type=str, required=True, help='Comma-separated list of parameters')
 parser.add_argument('--job_save_dir', type=str, required=True, help='Path to save the results')
+parser.add_argument('--model_names', type=str, required=True, help='List of model names')
+parser.add_argument('--init_abun', type=str, required=True, help='Species initial abundances')
 
 # Parse the arguments
 args = parser.parse_args()
 
 # Convert the comma-separated string back into a NumPy array
 params = np.fromstring(args.params, sep=',')
+init_abun = args.init_abun.split(',')
+model_names = args.model_names.split(',')
 
-glv_out = odeint(generalized_gLV, y0 = init_abun, t=time, args = (params_samp,))
+glv_out = odeint(generalized_gLV, y0 = init_abun, t=time, args = (params,))
 
-models = [eb_models[i], p_copri_models[i]]    
+
 met_pool_over_time, model_abun_dict = static_dfba(list_model_names=model_names,list_models=models, initial_abundance=init_abun, total_sim_time=(460), num_t_steps=(460), glv_out=glv_out, glv_params=params_samp, environ_cond= rcm_add, pfba=True)
 
+met_pool_filename = "met_pool_over_time.npy"
+model_abun_filename = "model_abun_dict.npy"
 
 # Save the results to the specified save path
-np.save(args.job_save_dir, results)
-print(f"Results saved to {args.save_path}")
+np.save(os.path.join(args.job_save_dir, met_pool_filename), met_pool_over_time)
+np.save(os.path.join(args.job_save_dir, model_abun_filename), model_abun_dict)
