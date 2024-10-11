@@ -394,8 +394,12 @@ def generalized_gLV(X, t, params):
 def ls_glv_fit(init_abun, params, total_sim_time, time_steps, microbe_data):
 
     init_abun = np.array(init_abun)
-    
+
+    # for some reason need to change tolerances and differntiate step sizes for the least_squares solver on hpc as compared to my local machine
+    # nevermind, seems fine now, there's definitely some weird stuff going on with this least squares function 
     results = least_squares(ode_model_resid, x0=params, bounds=([0, 0, 0, -10, -10, -10], [10, 10, 10, 10, 0, 0]), xtol = 1e-10, args = (microbe_data, init_abun))
+
+    #results = least_squares(ode_model_resid, x0=params, bounds=([0, 0, 0, -10, -10, -10], [10, 10, 10, 10, 0, 0]), diff_step=1e-6, ftol=1e-7, xtol=1e-7, gtol=1e-7, args = (microbe_data, init_abun))
 
     params = results.x
     

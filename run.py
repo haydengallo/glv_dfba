@@ -39,27 +39,15 @@ from helper_functions import *
 
 wd = '/Users/haydengallo/Documents/Bucci_Lab'
 
+
+#setenv("GUROBI_LICENSE_FILE","/share/pkg/gurobi/11.0.2/lib/gurobi.lic")
+
 ### loading cobra models
 
 ### for some reason, sbml/xml models give different initial growth rates than same model but in .mat format???? why 
 
-p_copri_model_1 = cobra.io.load_matlab_model('/Users/haydengallo/cobratoolbox/panSpeciesModels/panPrevotella_copri.mat')  
-eb_model_1 = cobra.io.load_matlab_model('/Users/haydengallo/cobratoolbox/panSpeciesModels/panEubacterium_limosum.mat') 
-
-p_copri_model_2 = cobra.io.load_matlab_model('/Users/haydengallo/cobratoolbox/panSpeciesModels/panPrevotella_copri.mat')  
-eb_model_2 = cobra.io.load_matlab_model('/Users/haydengallo/cobratoolbox/panSpeciesModels/panEubacterium_limosum.mat') 
-
-p_copri_model_3 = cobra.io.load_matlab_model('/Users/haydengallo/cobratoolbox/panSpeciesModels/panPrevotella_copri.mat')  
-eb_model_3 = cobra.io.load_matlab_model('/Users/haydengallo/cobratoolbox/panSpeciesModels/panEubacterium_limosum.mat') 
-
-p_copri_model_4 = cobra.io.load_matlab_model('/Users/haydengallo/cobratoolbox/panSpeciesModels/panPrevotella_copri.mat')  
-eb_model_4 = cobra.io.load_matlab_model('/Users/haydengallo/cobratoolbox/panSpeciesModels/panEubacterium_limosum.mat') 
-
-p_copri_model_5 = cobra.io.load_matlab_model('/Users/haydengallo/cobratoolbox/panSpeciesModels/panPrevotella_copri.mat')  
-eb_model_5 = cobra.io.load_matlab_model('/Users/haydengallo/cobratoolbox/panSpeciesModels/panEubacterium_limosum.mat') 
-
-eb_models = [p_copri_model_1, p_copri_model_2, p_copri_model_3, p_copri_model_4, p_copri_model_5]
-p_copri_models = [eb_model_1, eb_model_2, eb_model_3, eb_model_4, eb_model_5]
+p_copri_model = cobra.io.load_matlab_model('/home/hayden.gallo-umw/data/dfba_glv/panSpeciesModels_AMANHI_P/panPrevotella_copri.mat')  
+eb_model = cobra.io.load_matlab_model('/home/hayden.gallo-umw/data/dfba_glv/panSpeciesModels_AMANHI_P/panEubacterium_limosum.mat') 
 
 
 #fp_model = cobra.io.load_matlab_model('/Users/haydengallo/cobratoolbox/panSpeciesModels/panFaecalibacterium_prausnitzii.mat') 
@@ -106,7 +94,7 @@ rcm_media_dict = dict(zip(rcm_add['reaction'], rcm_add['fluxValue']))
 
 ### load in hanks data 
 
-cerillo_test_data = pd.read_csv('/Users/haydengallo/Documents/Bucci_Lab/cerillo_data/averaged_cerillo.csv', index_col=0)
+cerillo_test_data = pd.read_csv('/home/hayden.gallo-umw/data/dfba_glv/averaged_cerillo.csv', index_col=0)
 
 cerillo_test_data.shape
 
@@ -116,7 +104,8 @@ cerillo_test_data.head()
 test_df = cerillo_test_data[(cerillo_test_data['Group_together'] == 'PCwEB') | (cerillo_test_data['Group_together'] == 'EBwPC')]
 microbe_data = test_df.pivot(index='Time', columns= 'Group_together', values = 'OD').reset_index()
 
-
+print(microbe_data.head())
+'''
 ### should probably make a directory to store inference 
 data_dir = str(wd + '/glv_dfba_testing_data/testing')
 
@@ -124,9 +113,10 @@ if os.path.exists(data_dir):
     print('already exists')
 else:
     os.mkdir(data_dir)
+'''
 
 model_names = ['eb', 'p_copri']
-#models = [eb_model, p_copri_model]
+models = [eb_model, p_copri_model]
 #init_abun = [.0023, .002633]
 init_abun = [.002, .002]
 
@@ -148,30 +138,30 @@ a_2 = -2.9
 
 
 params = np.array([r_1, r_2, gamma_1, gamma_2, a_1, a_2])
-
+#print(params)
 total_sim_time = 460
 num_t_steps = 460
 
+#print(np.finfo(float))
 
 
 ### first perform original least squares fit of glv
 
 glv_out, params_ls, time = ls_glv_fit(init_abun = init_abun, params = params, total_sim_time=total_sim_time, time_steps=num_t_steps, microbe_data=microbe_data)
-
 ### next perform bayesian glv fit using params_ls
-
+#print(params_ls)
 model = bayesian_glv_setup(params_init=params_ls, microbe_data=microbe_data, init_abun=init_abun)
 (pm.model_to_graphviz(model=model))
 
-trace = bayesian_glv_run(model=model, num_samples=10000, chains =10)
-trace_save_name = str(data_dir + '/trace.nc')
-trace.to_netcdf(trace_save_name)
+trace = bayesian_glv_run(model=model, num_samples=100000, chains =10)
+#trace_save_name = str(data_dir + '/trace.nc')
+#trace.to_netcdf(trace_save_name)
 
 ### next sample from posterior of bayesian fit 
+num_samples_post = 50
+param_dict = posterior_param_samps(num_samples=num_samples_post, glv_trace=trace)
 
-param_dict = posterior_param_samps(num_samples=5, glv_trace=trace)
-
-
+#print(param_dict)
 
 
 ### Submitting batch jobs to the cluster
@@ -183,27 +173,65 @@ job_name = "glv_dfba_testing"
 base_output_dir = "/home/hayden.gallo-umw/glv_dfba_testing/test_1"
 output_dir = "/home/hayden.gallo-umw/job_output/out_logs"
 error_dir = "/home/hayden.gallo-umw/job_output/error_logs"
-python_script_path = "/home/hayden.gallo-umw/scripts/glv_dfba_hpc_batch.py"
+python_script_path = "/home/hayden.gallo-umw/glv_dfba_implement/glv_dfba/batch_sims_from_posterior.py"
 
 os.makedirs(base_output_dir, exist_ok=True)
 
 # Iterate over seeds and submit jobs
-for i in range(0, len(param_dict)):
+for i in range(0, num_samples_post):
     # build parameter np.array
-    params = np.array([param_dict['r_1']['samples'][i], param_dict['r_2']['samples'][i], param_dict['gamma_1']['samples'][i], param_dict['gamma_2']['samples'][i], param_dict['a_1']['samples'][i], param_dict['a_2']['samples'][i]])    unique_job_name = f"{job_name}_seed_{seed}"
+    params = np.array([param_dict['r_1']['samples'][i], param_dict['r_2']['samples'][i], param_dict['gamma_1']['samples'][i], param_dict['gamma_2']['samples'][i], param_dict['a_1']['samples'][i], param_dict['a_2']['samples'][i]])    
     # convert np.array to comma separated list for later parsing
     params_str = ','.join(map(str, params))
     # take model_names list and make comma sep list
     model_names_str = ','.join(model_names)
     # take init_abun list and make comma sep list
-    init_abun_str = ','.join(init_abun)
+    init_abun_str = ','.join(map(str, init_abun))
+    # take time array and send to each job
+    time_str = ','.join(map(str, time))
 
-    unique_job_name = f"{job_name}_i_"
+
+    unique_job_name = f"{job_name}_{i}_"
     job_save_dir = os.path.join(base_output_dir, unique_job_name)
     os.makedirs(job_save_dir, exist_ok=True)
 
     batch_script = f"{base_output_dir}/{unique_job_name}.lsf"
 
+
+
+#batch_script = f"{base_output_dir}/{unique_job_name}.lsf"
+
+    # Create the batch script content
+    batch_content = f"""#!/bin/bash
+    #BSUB -J {unique_job_name}
+    #BSUB -o {output_dir}/{unique_job_name}.%J.out
+    #BSUB -e {error_dir}/{unique_job_name}.%J.err
+    #BSUB -q short
+    #BSUB -W 4:00
+    #BSUB -n 1
+    #BSUB -R "span[hosts=1]"
+    #BSUB -R "rusage[mem=2GB]"
+
+    # Execute the Python script with the parameters
+    python {python_script_path} --params {params_str}  --model_names {model_names_str} --init_abun {init_abun_str} --job_save_dir {job_save_dir} --time {time_str}
+    """
+
+    # Write the batch script to a file
+    with open(batch_script, 'w') as file:
+        file.write(batch_content)
+
+    # Submit the job using 'bsub' by reading the batch script file
+    try:
+        with open(batch_script) as f:
+            subprocess.run(["bsub"], stdin=f, check=True)
+        print(f"Submitted job for params {params}")
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to submit job for params {params}: {e}")
+
+
+
+
+'''
     # Create the batch script content
     batch_content = f"""#!/bin/bash
 #BSUB -J {unique_job_name}
@@ -229,6 +257,6 @@ python {python_script_path} --params {params_str}  --model_names {model_names_st
         print(f"Submitted job for params {params}")
     except subprocess.CalledProcessError as e:
         print(f"Failed to submit job for params {params}: {e}")
-
+'''
 
 
