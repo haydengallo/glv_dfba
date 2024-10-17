@@ -120,6 +120,10 @@ def model_opt_out(model_abun_dict, delta_t, pfba):
 
             # optimize model i via pfba 
             temp_pfba = cobra.flux_analysis.pfba(model_abun_dict[key]['model'])
+            print(temp_pfba.status)
+            #print(model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound)
+
+            ## seem to have some infeasible solutions, unclear why 
             # put fluxes in df for manipulation
             temp_pfba_df = temp_pfba.to_frame().filter(regex='EX_', axis = 0)
             
@@ -128,6 +132,8 @@ def model_opt_out(model_abun_dict, delta_t, pfba):
 
             # secreted should have negative sign to align with normal FBA
             test_secrete = temp_pfba_df[temp_pfba_df['fluxes'] > 0]
+            #print(test_secrete)
+
             # filter out fluxes that are taken up
             # uptake should have positive sign to align with normal FBA
             test_uptake = temp_pfba_df[temp_pfba_df['fluxes'] < 0]
@@ -135,7 +141,12 @@ def model_opt_out(model_abun_dict, delta_t, pfba):
             temp_uptake = np.abs(test_uptake['fluxes']) * delta_t * model_abun_dict[key]['abun']
             temp_secrete = -1.0*(test_secrete['fluxes']) * delta_t * model_abun_dict[key]['abun']   
             #print(temp_secrete)
-            pfba_obj_val = test_secrete.filter(regex='bio', axis=0)['fluxes'].iloc[0]
+
+            ## basically need to account for case when objective value is zero so need to add if statement to get around if this is the case
+            if model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound < 1e-5:
+                pfba_obj_val = 0
+            else:
+                pfba_obj_val = test_secrete.filter(regex='bio', axis=0)['fluxes'].iloc[0]
 
             #print('Obj val', pfba_obj_val)
             model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + pfba_obj_val
@@ -397,16 +408,19 @@ def ls_glv_fit(init_abun, params, total_sim_time, time_steps, microbe_data):
 
     # for some reason need to change tolerances and differntiate step sizes for the least_squares solver on hpc as compared to my local machine
     # nevermind, seems fine now, there's definitely some weird stuff going on with this least squares function 
-    results = least_squares(ode_model_resid, x0=params, bounds=([0, 0, 0, -10, -10, -10], [10, 10, 10, 10, 0, 0]), xtol = 1e-10, args = (microbe_data, init_abun))
+    # basically least squares returns different answers on mac and linux and because of bounds set on parameters both in lsq and for priors of bayesian inference, then there isn't congruency and error thrown
+    results = least_squares(ode_model_resid, x0=params, bounds=([0, 0, 0, 0, -10, -10], [10, 10, 10, 10, 0, 0]), diff_step=1e-12, xtol = 1e-15, args = (microbe_data, init_abun))
 
     #results = least_squares(ode_model_resid, x0=params, bounds=([0, 0, 0, -10, -10, -10], [10, 10, 10, 10, 0, 0]), diff_step=1e-6, ftol=1e-7, xtol=1e-7, gtol=1e-7, args = (microbe_data, init_abun))
+
+    #results = least_squares(ode_model_resid, x0=params, bounds=([0, 0, 0, -10, -10, -10], [10, 10, 10, 10, 0, 0]), args = (microbe_data, init_abun), verbose = 1)
+    print(results.x)
 
     params = results.x
     
     time = np.arange(0, int(total_sim_time+1), int(total_sim_time/time_steps))
 
     x_y = odeint(generalized_gLV, y0 = init_abun, t=time, args = (params,))
-
 
     return x_y, params, time
     
