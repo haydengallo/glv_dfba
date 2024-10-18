@@ -153,12 +153,12 @@ glv_out, params_ls, time = ls_glv_fit(init_abun = init_abun, params = params, to
 model = bayesian_glv_setup(params_init=params_ls, microbe_data=microbe_data, init_abun=init_abun)
 (pm.model_to_graphviz(model=model))
 
-trace = bayesian_glv_run(model=model, num_samples=10000, chains =10)
+trace = bayesian_glv_run(model=model, num_samples=400000, chains =10)
 #trace_save_name = str(data_dir + '/trace.nc')
 #trace.to_netcdf(trace_save_name)
 
 ### next sample from posterior of bayesian fit 
-num_samples_post = 25
+num_samples_post = 100
 param_dict = posterior_param_samps(num_samples=num_samples_post, glv_trace=trace)
 
 #print(param_dict)
@@ -170,7 +170,7 @@ param_dict = posterior_param_samps(num_samples=num_samples_post, glv_trace=trace
 
 # Job and file paths
 job_name = "glv_dfba_testing"
-base_output_dir = "/home/hayden.gallo-umw/glv_dfba_testing/test_6"
+base_output_dir = "/home/hayden.gallo-umw/glv_dfba_testing/test_8"
 output_dir = "/home/hayden.gallo-umw/job_output/out_logs"
 error_dir = "/home/hayden.gallo-umw/job_output/error_logs"
 python_script_path = "/home/hayden.gallo-umw/glv_dfba_implement/glv_dfba/batch_sims_from_posterior.py"
