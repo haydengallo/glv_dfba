@@ -395,7 +395,7 @@ def ls_glv_fit(init_abun, params, total_sim_time, time_steps, microbe_data):
 
     init_abun = np.array(init_abun)
     
-    results = least_squares(ode_model_resid, x0=params, bounds=([0, 0, 0, -10, -10, -10], [10, 10, 10, 10, 0, 0]), xtol = 1e-10, args = (microbe_data, init_abun))
+    results = least_squares(ode_model_resid, x0=params, bounds=([0, 0, 0, -10, -10, -10], [10, 10, 10, 10, 0, 0]), xtol = 1e-15, args = (microbe_data, init_abun))
 
     params = results.x
     

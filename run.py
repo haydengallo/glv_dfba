@@ -152,7 +152,7 @@ params = np.array([r_1, r_2, gamma_1, gamma_2, a_1, a_2])
 total_sim_time = 460
 num_t_steps = 460
 
-
+print(np.finfo(float))
 
 ### first perform original least squares fit of glv
 
@@ -172,7 +172,7 @@ trace.to_netcdf(trace_save_name)
 param_dict = posterior_param_samps(num_samples=5, glv_trace=trace)
 
 
-
+'''
 
 ### Submitting batch jobs to the cluster
 
@@ -183,7 +183,7 @@ job_name = "glv_dfba_testing"
 base_output_dir = "/home/hayden.gallo-umw/glv_dfba_testing/test_1"
 output_dir = "/home/hayden.gallo-umw/job_output/out_logs"
 error_dir = "/home/hayden.gallo-umw/job_output/error_logs"
-python_script_path = "/home/hayden.gallo-umw/scripts/glv_dfba_hpc_batch.py"
+python_script_path = "/home/hayden.gallo-umw/scripts/batch_sims_from_posterior.py.py"
 
 os.makedirs(base_output_dir, exist_ok=True)
 
@@ -233,3 +233,4 @@ python {python_script_path} --params {params_str}  --model_names {model_names_st
 
 
 
+'''
