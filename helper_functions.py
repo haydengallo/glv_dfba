@@ -398,13 +398,14 @@ def ls_glv_fit(init_abun, params, total_sim_time, time_steps, microbe_data):
     results = least_squares(ode_model_resid, x0=params, bounds=([0, 0, 0, -10, -10, -10], [10, 10, 10, 10, 0, 0]), xtol = 1e-15, args = (microbe_data, init_abun))
 
     params = results.x
+    cost = results.cost
     
     time = np.arange(0, int(total_sim_time+1), int(total_sim_time/time_steps))
 
     x_y = odeint(generalized_gLV, y0 = init_abun, t=time, args = (params,))
 
 
-    return x_y, params, time
+    return x_y, params, time, cost
     
 
 
