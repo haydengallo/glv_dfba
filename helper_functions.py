@@ -375,6 +375,16 @@ def ode_model_resid(params, microbe_data, init_abun):
     ).values.flatten()
 
 
+### this function for computing SSE when we are trying to fit gLV to multiple datasets, to be used in conjunction with a call of scipy.optimize.minimize to determine weakly informative priors for MCMC fit of gLV
+def total_loss(params, microbe_data_list, abun_list):
+    total_loss_sq = 0
+    for i in range(0, len(abun_list)):
+        loss = ode_model_resid(params=params, microbe_data=microbe_data_list[i], init_abun=abun_list[i])
+        total_loss_sq += np.sum(loss**2)
+
+    return total_loss_sq
+
+
 ### implementing naive gLV
 
 def generalized_gLV(X, t, params):
@@ -398,14 +408,13 @@ def ls_glv_fit(init_abun, params, total_sim_time, time_steps, microbe_data):
     results = least_squares(ode_model_resid, x0=params, bounds=([0, 0, 0, -10, -10, -10], [10, 10, 10, 10, 0, 0]), xtol = 1e-15, args = (microbe_data, init_abun))
 
     params = results.x
-    cost = results.cost
     
     time = np.arange(0, int(total_sim_time+1), int(total_sim_time/time_steps))
 
     x_y = odeint(generalized_gLV, y0 = init_abun, t=time, args = (params,))
 
 
-    return x_y, params, time, cost
+    return x_y, params, time
     
 
 
@@ -460,6 +469,52 @@ def bayesian_glv_run(model, num_samples, chains):
     tune = draws = num_samples
     with model:
         trace_DEMZ = pm.sample(step=[pm.DEMetropolisZ(vars_list)], tune=tune, draws=draws, chains=chains)
+    trace = trace_DEMZ
+    #az.summary(trace)
+
+    return trace
+
+
+def bayesian_glv_setup_multi(params_init, microbe_data_list, abun_list):
+
+    #params = results.x  # least squares solution used to inform the priors
+    with pm.Model() as model:
+        # Priors
+        r_1 = pm.TruncatedNormal("r_1", mu=params_init[0], sigma=0.1, lower=0, initval=params_init[0])
+        r_2 = pm.TruncatedNormal("r_2", mu=params_init[1], sigma=0.01, lower=0, initval=params_init[1])
+        ### Should I make gamma normally distributed? or at least gamma_2 for PC due to 
+        gamma_1 = pm.TruncatedNormal("gamma_1", mu=params_init[2], sigma=0.1, lower=0, initval=params_init[2])
+        gamma_2 = pm.TruncatedNormal("gamma_2", mu=params_init[3], sigma=0.01, lower=0, initval=params_init[3])
+        a_1 = pm.TruncatedNormal("a_1", mu=params_init[4], sigma=1, upper=0, initval=params_init[4])
+        a_2 = pm.TruncatedNormal("a_2", mu=params_init[5], sigma=1, upper=0, initval=params_init[5])
+
+        #for i in range(0, len(microbe_data_list)):
+        #    # Likelihood for each dataset, with a unique sigma per dataset
+        #    sigma = pm.HalfNormal(f"sigma_{i}", 10)
+
+        # Loop over each dataset
+        for i, microbe_data in enumerate(microbe_data_list):
+            # ODE solution for each dataset
+            ode_solution = pytensor_forward_model_matrix(
+                pm.math.stack([r_1, r_2, gamma_1, gamma_2, a_1, a_2]), pm.math.stack(abun_list[i]), pt.as_tensor(microbe_data.values)
+            )
+            sigma = pm.HalfNormal(f"sigma_{i}", 10)
+
+            pm.Normal(f"Y_obs_{i}", mu=ode_solution, sigma=sigma, observed=microbe_data.iloc[:,1:].values)
+
+        return model
+
+
+
+
+def bayesian_glv_run_multi(model, num_samples, chains):
+    # Variable list to give to the sample step parameter
+    vars_list = list(model.values_to_rvs.keys())[:7]+[list(model.values_to_rvs.keys())[8]]+[list(model.values_to_rvs.keys())[10]]
+
+    sampler = "DEMetropolisZ"
+    tune = draws = num_samples
+    with model:
+        trace_DEMZ = pm.sample(step=[pm.DEMetropolisZ(vars_list)], tune=tune, draws=draws, chains=chains, cores = 10)
     trace = trace_DEMZ
     #az.summary(trace)
 
