@@ -400,6 +400,25 @@ def generalized_gLV(X, t, params):
     return [dxdt, dydt]
 
 
+def multi_spec_gLV(X, t, params):
+
+    ### hmm need to expand this to account for N species, i guess for now I can just expand such that I account for 3 species 
+    x, y, z = X 
+    r_1, r_2, r_3, gamma_EP, gamma_ED, gamma_PE, gamma_PD, gamma_DE, gamma_DP, a_1, a_2, a_3 =  params
+
+    # EB concentration integrated overtime
+    dxdt = x * (r_1 + a_1*x + gamma_EP*y + gamma_ED*z)
+
+    # P. copri concentration integrated overtime 
+    dydt = y * (r_2 + a_2*y + gamma_PE*x + gamma_PD*z)
+
+    # Dorea concentration integrated overtime 
+    dzdt = z * (r_3 + a_3*z + gamma_DE*x + gamma_DP*y)
+
+
+    return [dxdt, dydt, dzdt]
+
+
 
 def ls_glv_fit(init_abun, params, total_sim_time, time_steps, microbe_data):
 
