@@ -631,8 +631,13 @@ def bayesian_glv_setup_three_spec(params_init, microbe_data_list, abun_list):
 
 def bayesian_glv_run_three_spec(model, num_samples, chains):
     # Variable list to give to the sample step parameter
-    vars_list = list(model.values_to_rvs.keys())[:11]+[list(model.values_to_rvs.keys())[12]]+[list(model.values_to_rvs.keys())[14]]+[list(model.values_to_rvs.keys())[16]]+[list(model.values_to_rvs.keys())[18]]
+    #vars_list = list(model.values_to_rvs.keys())[:11]+[list(model.values_to_rvs.keys())[12]]+[list(model.values_to_rvs.keys())[14]]+[list(model.values_to_rvs.keys())[16]]+[list(model.values_to_rvs.keys())[18]]
 
+    # this seems to be a better way to variable select, basically the variables we always want ends with '__' and if we just filter for names that have this we can easily grab correct variable lists
+    # https://stackoverflow.com/questions/15403021/regular-expression-to-filter-list-of-strings-matching-a-pattern
+
+    vars_list = [e for e in list(model.values_to_rvs.keys()) if e.name.endswith('__')]
+    
     sampler = "DEMetropolisZ"
     tune = draws = num_samples
     with model:
