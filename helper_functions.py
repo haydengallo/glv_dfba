@@ -121,18 +121,19 @@ def model_opt_out(model_abun_dict, delta_t, pfba):
             # optimize model i via pfba 
             temp_pfba = cobra.flux_analysis.pfba(model_abun_dict[key]['model'])
             print(temp_pfba.status)
-            #print(model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound)
-
+            print(temp_pfba)
+            print(model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound)
+            print(model_abun_dict[key]['model'].medium)
             ## seem to have some infeasible solutions, unclear why 
             # put fluxes in df for manipulation
             temp_pfba_df = temp_pfba.to_frame().filter(regex='EX_', axis = 0)
             
             # filter out fluxes that are secreted
-            # signs are flipped here compared to standard fba optimization in cobapy so must change them
+            # signs are flipped here compared to standard fba optimization in cobrapy so must change them
 
             # secreted should have negative sign to align with normal FBA
             test_secrete = temp_pfba_df[temp_pfba_df['fluxes'] > 0]
-            #print(test_secrete)
+            print(test_secrete)
 
             # filter out fluxes that are taken up
             # uptake should have positive sign to align with normal FBA
@@ -141,14 +142,13 @@ def model_opt_out(model_abun_dict, delta_t, pfba):
             temp_uptake = np.abs(test_uptake['fluxes']) * delta_t * model_abun_dict[key]['abun']
             temp_secrete = -1.0*(test_secrete['fluxes']) * delta_t * model_abun_dict[key]['abun']   
             #print(temp_secrete)
-
             ## basically need to account for case when objective value is zero so need to add if statement to get around if this is the case
-            if model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound < 1e-5:
+            if model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound < 1e-8:
                 pfba_obj_val = 0
             else:
                 pfba_obj_val = test_secrete.filter(regex='bio', axis=0)['fluxes'].iloc[0]
 
-            #print('Obj val', pfba_obj_val)
+            print('Obj val', pfba_obj_val)
             model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + pfba_obj_val
         
         else:
@@ -224,9 +224,10 @@ def change_biomass_bounds(model_abun_dict, glv_params, t_pt):
     for key in model_abun_dict:
         temp_abun_list.append(model_abun_dict[key]['glv_out'][t_pt])
     
-    gr_rt_t_pt = generalized_gLV(temp_abun_list, t_pt, params=glv_params)
-    #print(gr_rt_t_pt)
-
+    #gr_rt_t_pt = generalized_gLV(temp_abun_list, t_pt, params=glv_params)
+    gr_rt_t_pt = multi_spec_gLV(temp_abun_list, t_pt, params=glv_params)
+    print(gr_rt_t_pt)
+### might be something wrong here, not quite sure, but only happens for DO so leads me to believe its index related
     for count, key in enumerate(model_abun_dict):
         if gr_rt_t_pt[count] > 0:
             model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound = gr_rt_t_pt[count]
@@ -368,7 +369,7 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
 
         # Step 5. Update total metabolite pool
         met_pool_dict  = update_met_pool(uptake_dict=total_sys_uptake, secrete_dict=total_sys_secretion, met_pool_dict=met_pool_dict)
-        #print(met_pool_dict)
+        print(met_pool_dict)
         met_pool_over_time.append(met_pool_dict.copy())
         #print(len(met_pool_over_time))
 
@@ -377,13 +378,44 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
     
     return met_pool_over_time, model_abun_dict
 
-
+######################
+### Loss Functions ###
+######################
 
 # function that calculates residuals based on a given theta
 def ode_model_resid(params, microbe_data, init_abun):
     return (
         microbe_data.iloc[:,1:] - odeint(generalized_gLV, y0 = init_abun, t=microbe_data['Time'], args = (params,))
     ).values.flatten()
+
+### this function for computing SSE when we are trying to fit gLV to multiple datasets, to be used in conjunction with a call of scipy.optimize.minimize to determine weakly informative priors for MCMC fit of gLV
+def total_loss(params, microbe_data_list, abun_list):
+    total_loss_sq = 0
+    for i in range(0, len(abun_list)):
+        loss = ode_model_resid(params=params, microbe_data=microbe_data_list[i], init_abun=abun_list[i])
+        total_loss_sq += np.sum(loss**2)
+
+    return total_loss_sq
+
+
+def ode_model_resid_multi(params, microbe_data, init_abun):
+    return (
+        microbe_data.iloc[:,1:] - odeint(multi_spec_gLV, y0 = init_abun, t=microbe_data['Time'], args = (params,))
+    ).values.flatten()
+
+def total_loss_multi(params, microbe_data_list, abun_list):
+    total_loss_sq = 0
+    for i in range(0, len(abun_list)):
+        loss = ode_model_resid_multi(params=params, microbe_data=microbe_data_list[i], init_abun=abun_list[i])
+        total_loss_sq += np.sum(loss**2)
+
+    return total_loss_sq
+
+
+###########################
+### gLV implementations ###
+###########################
+
 
 
 ### implementing naive gLV
@@ -399,6 +431,24 @@ def generalized_gLV(X, t, params):
     dydt = y * (r_2 + gamma_2*x + a_2*y)
 
     return [dxdt, dydt]
+
+def multi_spec_gLV(X, t, params):
+
+    ### hmm need to expand this to account for N species, i guess for now I can just expand such that I account for 3 species 
+    x, y, z = X 
+    r_1, r_2, r_3, gamma_EP, gamma_ED, gamma_PE, gamma_PD, gamma_DE, gamma_DP, a_1, a_2, a_3 =  params
+
+    # EB concentration integrated overtime
+    dxdt = x * (r_1 + a_1*x + gamma_EP*y + gamma_ED*z)
+
+    # P. copri concentration integrated overtime 
+    dydt = y * (r_2 + a_2*y + gamma_PE*x + gamma_PD*z)
+
+    # Dorea concentration integrated overtime 
+    dzdt = z * (r_3 + a_3*z + gamma_DE*x + gamma_DP*y)
+
+
+    return [dxdt, dydt, dzdt]
 
 
 
@@ -463,6 +513,7 @@ def bayesian_glv_setup(params_init, microbe_data, init_abun):
 
         # Likelihood
         pm.Normal("Y_obs", mu=ode_solution, sigma=sigma, observed=microbe_data[["EBwPC", "PCwEB"]].values)
+        # can i add second pm.norm liek Y_obs_2 where its the monoculture data
 
         return model
 
@@ -476,11 +527,123 @@ def bayesian_glv_run(model, num_samples, chains):
     sampler = "DEMetropolisZ"
     tune = draws = num_samples
     with model:
-        trace_DEMZ = pm.sample(step=[pm.DEMetropolisZ(vars_list)], tune=tune, draws=draws, chains=chains)
+        trace_DEMZ = pm.sample(step=[pm.DEMetropolisZ(vars_list)], tune=tune, draws=draws, chains=chains, cores = 10)
     trace = trace_DEMZ
     #az.summary(trace)
 
     return trace
+
+
+
+
+def bayesian_glv_setup_multi(params_init, microbe_data_list, abun_list):
+
+    #params = results.x  # least squares solution used to inform the priors
+    with pm.Model() as model:
+        # Priors
+        r_1 = pm.TruncatedNormal("r_1", mu=params_init[0], sigma=0.1, lower=0, initval=params_init[0])
+        r_2 = pm.TruncatedNormal("r_2", mu=params_init[1], sigma=0.01, lower=0, initval=params_init[1])
+        ### Should I make gamma normally distributed? or at least gamma_2 for PC due to 
+        gamma_1 = pm.TruncatedNormal("gamma_1", mu=params_init[2], sigma=0.1, lower=0, initval=params_init[2])
+        gamma_2 = pm.TruncatedNormal("gamma_2", mu=params_init[3], sigma=0.01, lower=0, initval=params_init[3])
+        a_1 = pm.TruncatedNormal("a_1", mu=params_init[4], sigma=1, upper=0, initval=params_init[4])
+        a_2 = pm.TruncatedNormal("a_2", mu=params_init[5], sigma=1, upper=0, initval=params_init[5])
+
+        #for i in range(0, len(microbe_data_list)):
+        #    # Likelihood for each dataset, with a unique sigma per dataset
+        #    sigma = pm.HalfNormal(f"sigma_{i}", 10)
+
+        # Loop over each dataset
+        for i, microbe_data in enumerate(microbe_data_list):
+            # ODE solution for each dataset
+            ode_solution = pytensor_forward_model_matrix(
+                pm.math.stack([r_1, r_2, gamma_1, gamma_2, a_1, a_2]), pm.math.stack(abun_list[i]), pt.as_tensor(microbe_data.values)
+            )
+            sigma = pm.HalfNormal(f"sigma_{i}", 10)
+
+            pm.Normal(f"Y_obs_{i}", mu=ode_solution, sigma=sigma, observed=microbe_data.iloc[:,1:].values)
+
+        return model
+
+
+
+
+def bayesian_glv_run_multi(model, num_samples, chains):
+    # Variable list to give to the sample step parameter
+    vars_list = list(model.values_to_rvs.keys())[:7]+[list(model.values_to_rvs.keys())[8]]+[list(model.values_to_rvs.keys())[10]]
+
+    sampler = "DEMetropolisZ"
+    tune = draws = num_samples
+    with model:
+        trace_DEMZ = pm.sample(step=[pm.DEMetropolisZ(vars_list)], tune=tune, draws=draws, chains=chains, cores = 10)
+    trace = trace_DEMZ
+    #az.summary(trace)
+
+    return trace
+
+
+@as_op(itypes=[pt.dvector, pt.dvector, pt.dmatrix], otypes=[pt.dmatrix])
+def pytensor_forward_model_matrix_three_spec(params_ls, init_abun, microbe_data):
+
+    time_values = microbe_data[:,0]
+    #print(time_values)
+
+    return odeint(func=multi_spec_gLV, y0=init_abun, t=time_values, args=(params_ls,))
+
+def bayesian_glv_setup_three_spec(params_init, microbe_data_list, abun_list):
+
+    #params = results.x  # least squares solution used to inform the priors
+    with pm.Model() as model:
+        # Priors
+        r_1 = pm.TruncatedNormal("r_1", mu=params_init[0], sigma=0.1, lower=0, initval=params_init[0])
+        r_2 = pm.TruncatedNormal("r_2", mu=params_init[1], sigma=0.1, lower=0, initval=params_init[1])
+        r_3 = pm.TruncatedNormal("r_3", mu=params_init[2], sigma=0.1, lower=0, initval=params_init[2])
+
+        gamma_EP = pm.TruncatedNormal("gamma_EP", mu=params_init[3], sigma=0.1, lower=0, initval=params_init[3])
+        #gamma_ED = pm.TruncatedNormal("gamma_ED", mu=params_init[4], sigma=0.1, lower=0, upper=0, initval=params_init[4])
+        gamma_PE = pm.TruncatedNormal("gamma_PE", mu=params_init[5], sigma=0.1, lower=0, initval=params_init[5])
+        gamma_PD = pm.TruncatedNormal("gamma_PD", mu=params_init[6], sigma=0.1, lower=0, initval=params_init[6])
+        #gamma_DE = pm.TruncatedNormal("gamma_DE", mu=params_init[7], sigma=0.1, lower=0, upper=0, initval=params_init[7])
+        gamma_DP = pm.TruncatedNormal("gamma_DP", mu=params_init[8], sigma=0.1, upper=0, initval=params_init[8])
+
+        a_1 = pm.TruncatedNormal("a_1", mu=params_init[9], sigma=.1, upper=0, initval=params_init[9])
+        a_2 = pm.TruncatedNormal("a_2", mu=params_init[10], sigma=.1, upper=0, initval=params_init[10])
+        a_3 = pm.TruncatedNormal("a_3", mu=params_init[11], sigma=.1, upper=0, initval=params_init[11])
+
+        #for i in range(0, len(microbe_data_list)):
+        #    # Likelihood for each dataset, with a unique sigma per dataset
+        #    sigma = pm.HalfNormal(f"sigma_{i}", 10)
+
+        # Loop over each dataset
+        for i, microbe_data in enumerate(microbe_data_list):
+            # ODE solution for each dataset
+            ode_solution = pytensor_forward_model_matrix_three_spec(
+                pm.math.stack([r_1, r_2, r_3, gamma_EP, 0, gamma_PE, gamma_PD, 0, gamma_DP, a_1, a_2, a_3]), pm.math.stack(abun_list[i]), pt.as_tensor(microbe_data.values)
+            )
+            sigma = pm.HalfNormal(f"sigma_{i}", 10)
+
+            pm.Normal(f"Y_obs_{i}", mu=ode_solution, sigma=sigma, observed=microbe_data.iloc[:,1:].values)
+
+        return model
+
+
+
+
+def bayesian_glv_run_three_spec(model, num_samples, chains):
+    # Variable list to give to the sample step parameter
+    vars_list = list(model.values_to_rvs.keys())[:11]+[list(model.values_to_rvs.keys())[12]]+[list(model.values_to_rvs.keys())[14]]+[list(model.values_to_rvs.keys())[16]]+[list(model.values_to_rvs.keys())[18]]
+
+    sampler = "DEMetropolisZ"
+    tune = draws = num_samples
+    with model:
+        trace_DEMZ = pm.sample(step=[pm.DEMetropolisZ(vars_list)], tune=tune, draws=draws, chains=chains, cores = 10)
+    trace = trace_DEMZ
+    #az.summary(trace)
+
+    return trace
+
+
+
 
 
 
@@ -512,6 +675,36 @@ def posterior_param_samps(num_samples, glv_trace):
         plt.hist(samples, bins=20, density=True)
         plt.show()
         plt.close()
+
+    return param_dict
+
+
+
+def posterior_param_samps_multi(num_samples, glv_trace):
+    
+    param_dict = {'a_1' : {'upper_lim' : 0, 'lower_lim': -np.inf}, 'a_2' : {'upper_lim' : 0, 'lower_lim': -np.inf}, 'a_3' : {'upper_lim' : 0, 'lower_lim': -np.inf}, 'r_1' : {'upper_lim' : np.inf, 'lower_lim': 0}, 'r_2' : {'upper_lim' : np.inf, 'lower_lim': 0}, 'r_3' : {'upper_lim' : np.inf, 'lower_lim': 0},
+                   'gamma_DP' : {'upper_lim' : 0, 'lower_lim': -np.inf}, 'gamma_EP' : {'upper_lim' : np.inf, 'lower_lim': 0}, 'gamma_PD' : {'upper_lim' : np.inf, 'lower_lim': -np.inf}, 'gamma_PE' : {'upper_lim' : np.inf, 'lower_lim': -np.inf}}
+
+    for key in param_dict:
+        print(key)
+        #print(params_names[i])
+        #print(pm.summary(trace)[['mean','sd']].loc[params_names[i]])
+        mu = pm.summary(glv_trace)[['mean','sd']].loc[key].iloc[0]
+        sd = pm.summary(glv_trace)[['mean','sd']].loc[key].iloc[1] 
+        
+        lower = param_dict[key]['lower_lim']
+        upper = param_dict[key]['upper_lim']
+
+        N = num_samples
+
+        samples = truncnorm.rvs((lower-mu)/sd,(upper-mu)/sd,loc = mu, scale=sd, size = N)
+
+        param_dict[key]['samples'] = samples
+        #samples
+
+        #plt.hist(samples, bins=20, density=True)
+        #plt.show()
+        #plt.close()
 
     return param_dict
 
