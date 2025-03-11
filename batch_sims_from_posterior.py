@@ -40,6 +40,7 @@ import subprocess
 from helper_functions import *
 import argparse
 
+'''
 ### For now need to manually load models
 p_copri_model = cobra.io.load_matlab_model('/home/hayden.gallo-umw/data/iPc610.mat')
 
@@ -53,7 +54,9 @@ p_copri_model.reactions.get_by_id(id='EX_co2(e)').upper_bound = 100
 ### Need to change objective function id for this p_copri_model to biomassPan
 p_copri_model.reactions.Biomass_BT_v2_norm.id = 'biomassPan'
 
-#p_copri_model = cobra.io.load_matlab_model('/home/hayden.gallo-umw/data/dfba_glv/panSpeciesModels_AMANHI_P/panPrevotella_copri.mat')  
+'''
+
+p_copri_model = cobra.io.load_matlab_model('/home/hayden.gallo-umw/data/dfba_glv/panSpeciesModels_AMANHI_P/panPrevotella_copri.mat')  
 eb_model = cobra.io.load_matlab_model('/home/hayden.gallo-umw/data/dfba_glv/panSpeciesModels_AMANHI_P/panEubacterium_limosum.mat') 
 dorea_model = cobra.io.load_matlab_model('/home/hayden.gallo-umw/data/panDorea_longicatena.mat')
 
@@ -88,15 +91,24 @@ model_names = args.model_names.split(',')
 
 ### when transporting init_abun and time_steps from the run.py script, it is reencoded incorrectly as UTF-5 instead of float64 for some reason so need to figure that out 
 #init_abun = [.002, .002]
-time_integration = np.arange(0, 461, 1)
 
+#time_integration = np.arange(0, 461, 1)
+## time integration over 24 hours, but 1440 minutes
+### need to change time_integration from using np.arange to np.linspace
+
+#time_integration = np.arange(0, 289, 1)
+
+time_integration = np.linspace(0, 24,577)
+
+
+# total sim time should be in hours....
 #glv_out = odeint(generalized_gLV, y0 = init_abun, t=time_integration, args = (params,))
 glv_out = odeint(multi_spec_gLV, y0 = init_abun, t=time_integration, args  =(params,))
 #print(glv_out)
 
 #### here I need to specify the index because DO would be in [:,2]
 
-met_pool_over_time, model_abun_dict = static_dfba(list_model_names=model_names,list_models=models, initial_abundance=init_abun, total_sim_time=(460), num_t_steps=(460), glv_out=glv_out, glv_params=params, environ_cond= rcm_add, pfba=True)
+met_pool_over_time, model_abun_dict = static_dfba(list_model_names=model_names,list_models=models, initial_abundance=init_abun, total_sim_time=(24), num_t_steps=(576), glv_out=glv_out, glv_params=params, environ_cond= rcm_add, pfba=True)
 
 met_pool_filename = "met_pool_over_time.npy"
 model_abun_filename = "model_abun_dict.npy"

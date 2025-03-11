@@ -91,7 +91,8 @@ def change_media(model_abun_dict, supplied_media):
 
         ### here we take our temp media and apply to model.medium while also checking to make sure lengths are correct, if len(temp_media) != len(model.medium.keys) 
         ### then we determine which metabolites are missing and manually change them in model.reactions.get_by_id('reaction').lower_bound = -flux
-
+        # think this was unnecessary and causing problems
+        '''
         if len(temp_media) == len(model_abun_dict[key]['model'].medium.keys()):
             #print('good to go')
             continue
@@ -100,30 +101,46 @@ def change_media(model_abun_dict, supplied_media):
 
             if 'EX_ribflv(e)' in temp_media.keys():
                 print('yes')
-                model_abun_dict[key]['model'].get_by_id(id='EX_ribflv(e)').lower_bound = temp_media['EX_ribflv(e)']
+                model_abun_dict[key]['model'].reactions.get_by_id(id='EX_ribflv(e)').lower_bound = temp_media['EX_ribflv(e)']
                 
             else:
                 print('no')
+        '''        
     return
 
 
 ### this is to be run after optimization step 
 
-def model_opt_out(model_abun_dict, delta_t, pfba):
+def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_pt, model_names):
 
-    total_sys_uptake = {}
-    total_sys_secretion = {}
+    #total_sys_uptake = {}
+    #total_sys_secretion = {}
 
-    for key in model_abun_dict:
+    ### ok here decide random order of optimizing models 
+    ### determine num of keys in model_abun_dict
+    model_names
+
+    order_of_models = np.random.choice(range(0, len(model_names)), size=len(model_names), replace=False)
+    
+
+    #for key in model_abun_dict:
+    for model_i in order_of_models:
+        key = list(model_abun_dict.keys())[model_i]
+        model_key = key
+        print('Bacteria is:', key)
+
+        # initialize this dict for every model and update met_pool_dict after every model
+        total_sys_uptake = {}
+        total_sys_secretion = {}
 
         if pfba == True:
 
             # optimize model i via pfba 
             temp_pfba = cobra.flux_analysis.pfba(model_abun_dict[key]['model'])
-            print(temp_pfba.status)
-            print(temp_pfba)
-            print(model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound)
-            print(model_abun_dict[key]['model'].medium)
+            print('Status of pfba:', temp_pfba.status)
+            print('pfba', temp_pfba)
+            print('Upper_bound:',model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound)
+            print('Print medium used for optimization:',model_abun_dict[key]['model'].medium)
             ## seem to have some infeasible solutions, unclear why 
             # put fluxes in df for manipulation
             temp_pfba_df = temp_pfba.to_frame().filter(regex='EX_', axis = 0)
@@ -133,7 +150,7 @@ def model_opt_out(model_abun_dict, delta_t, pfba):
 
             # secreted should have negative sign to align with normal FBA
             test_secrete = temp_pfba_df[temp_pfba_df['fluxes'] > 0]
-            print(test_secrete)
+            print('Test_secrete',test_secrete)
 
             # filter out fluxes that are taken up
             # uptake should have positive sign to align with normal FBA
@@ -143,13 +160,20 @@ def model_opt_out(model_abun_dict, delta_t, pfba):
             temp_secrete = -1.0*(test_secrete['fluxes']) * delta_t * model_abun_dict[key]['abun']   
             #print(temp_secrete)
             ## basically need to account for case when objective value is zero so need to add if statement to get around if this is the case
-            if model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound < 1e-8:
+            ### got lines 147-151 from chatgpt
+            filtered = test_secrete.filter(regex='bio', axis=0)
+            if filtered.empty:
                 pfba_obj_val = 0
             else:
-                pfba_obj_val = test_secrete.filter(regex='bio', axis=0)['fluxes'].iloc[0]
+                pfba_obj_val = filtered['fluxes'].iloc[0]
+            #if model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound < 1e-8:
+            #    pfba_obj_val = 0
+            #else:
+            #    pfba_obj_val = test_secrete.filter(regex='bio', axis=0)['fluxes'].iloc[0]
 
             print('Obj val', pfba_obj_val)
-            model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + pfba_obj_val
+            ## have to do this after confirming that no negative values were created
+            #model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (delta_t*pfba_obj_val)
         
         else:
 
@@ -177,18 +201,20 @@ def model_opt_out(model_abun_dict, delta_t, pfba):
             #print('Obj val', model_abun_dict[key]['model'].summary()._objective_value)
 
         ### this is wrong for some reason... 
+            
+        ### Ok now need to move all of the append statements after when i need to check that there are no negative values in the met_pool_dict
         
-        model_abun_dict[key]['fba_biomass'].append(model_abun_dict[key]['abun'])
+        #model_abun_dict[key]['fba_biomass'].append(model_abun_dict[key]['abun'])
         #print(model_abun_dict[model_names[i]]['abun'])
 
         # dict of uptake for model x in i to n 
         uptake_dict = dict(zip(temp_uptake.index, temp_uptake))
         # add uptake_dict at time t to model storage
-        model_abun_dict[key]['flux_up'].append(uptake_dict.copy())
+        #model_abun_dict[key]['flux_up'].append(uptake_dict.copy())
         # dict of sec for model x in i to n 
         secrete_dict = dict(zip(temp_secrete.index, temp_secrete))
         # add sec_dict at time t to model storage
-        model_abun_dict[key]['flux_sec'].append(secrete_dict.copy())
+        #model_abun_dict[key]['flux_sec'].append(secrete_dict.copy())
 
         for key in uptake_dict:
             if key in total_sys_uptake.keys():
@@ -213,9 +239,171 @@ def model_opt_out(model_abun_dict, delta_t, pfba):
                     ### here add new metabolite to metabolite pool 
                     total_sys_secretion[key] = np.abs(secrete_dict[key])
                     #print(np.abs(secrete_dict[key]))
-            
 
-    return total_sys_uptake, total_sys_secretion
+        ####################################
+        ### Everything after here is new ###
+        ####################################
+
+        # ok basically need update metabolite pool after going through every bug i'd say 
+
+        ## hold on to the met_pool_dict from the previous time step in case we need to go back to it 
+        met_pool_dict_pre_t_st = met_pool_dict.copy()
+
+        met_pool_dict  = update_met_pool(uptake_dict=total_sys_uptake, secrete_dict=total_sys_secretion, met_pool_dict=met_pool_dict)
+        ### basically here go if there are any negative values for this met_pool_dict, need to utilize the met_pool_dict_pre_t_st
+        ### and reoptimize however many number of GEMs haven't been through secretion and uptake procedures,
+        if any(value < 0 for value in met_pool_dict.values()):
+
+            ### have to reset model key for model name
+            key = model_key
+            ### need to remove everything that had been appended previously but was no good,  
+            
+            # remove any of the negative fluxes 
+            # actually nevermind don't need to remove negative fluxes, but rather need to grab met_pool_dict from previous time step
+            #met_pool_dict = dict((k, v) for k, v in met_pool_dict.items() if v >= 0)
+             # Step 1. Change media conditions of models 
+            
+            ### update met_pool_df
+            met_pool_df = pd.DataFrame.from_dict(met_pool_dict_pre_t_st, orient='index',
+                        columns=['fluxValue'])
+            met_pool_df['fluxValue'] =  np.double(met_pool_df['fluxValue'])
+            met_pool_df = met_pool_df.reset_index()
+            met_pool_df.columns = ['reaction','fluxValue']
+
+            print('This is met pool from previous time step because went into negatives', met_pool_df)
+
+            ### All i need to change is the media for the model, nothing else, biomass bounds do not change
+            temp_media = make_media(model_abun_dict[key]['model'], media=met_pool_df)
+
+            # set media conditions to be the temp_media
+
+            model_abun_dict[key]['model'].medium = temp_media
+
+            if pfba == True:
+
+                # optimize model i via pfba 
+                temp_pfba = cobra.flux_analysis.pfba(model_abun_dict[key]['model'])
+                print('Status of pfba:', temp_pfba.status)
+                print('pfba', temp_pfba)
+                print('Upper_bound:',model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound)
+                print('Print medium used for optimization:',model_abun_dict[key]['model'].medium)
+                ## seem to have some infeasible solutions, unclear why 
+                # put fluxes in df for manipulation
+                temp_pfba_df = temp_pfba.to_frame().filter(regex='EX_', axis = 0)
+                
+                # filter out fluxes that are secreted
+                # signs are flipped here compared to standard fba optimization in cobrapy so must change them
+
+                # secreted should have negative sign to align with normal FBA
+                test_secrete = temp_pfba_df[temp_pfba_df['fluxes'] > 0]
+                print('Test_secrete',test_secrete)
+
+                # filter out fluxes that are taken up
+                # uptake should have positive sign to align with normal FBA
+                test_uptake = temp_pfba_df[temp_pfba_df['fluxes'] < 0]
+
+                temp_uptake = np.abs(test_uptake['fluxes']) * delta_t * model_abun_dict[key]['abun']
+                temp_secrete = -1.0*(test_secrete['fluxes']) * delta_t * model_abun_dict[key]['abun']   
+                #print(temp_secrete)
+                ## basically need to account for case when objective value is zero so need to add if statement to get around if this is the case
+                ### got lines 147-151 from chatgpt
+                filtered = test_secrete.filter(regex='bio', axis=0)
+                if filtered.empty:
+                    pfba_obj_val = 0
+                else:
+                    pfba_obj_val = filtered['fluxes'].iloc[0]
+                #if model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound < 1e-8:
+                #    pfba_obj_val = 0
+                #else:
+                #    pfba_obj_val = test_secrete.filter(regex='bio', axis=0)['fluxes'].iloc[0]
+
+                print('Obj val', pfba_obj_val)
+                model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (delta_t*pfba_obj_val)
+            
+            else:
+
+                test_secrete = model_abun_dict[key]['model'].summary().secretion_flux.loc[model_abun_dict[key]['model'].summary().secretion_flux['reaction'].filter(regex='EX_')]
+                test_uptake = model_abun_dict[key]['model'].summary().uptake_flux.loc[model_abun_dict[key]['model'].summary().uptake_flux['reaction'].filter(regex='EX_')]
+
+                test_secrete = test_secrete[test_secrete['flux'] !=0 ]
+                test_uptake = test_uptake[test_uptake['flux'] !=0 ]
+
+                temp_uptake = test_uptake['flux'] * delta_t * model_abun_dict[key]['abun']
+                temp_secrete = test_secrete['flux'] * delta_t * model_abun_dict[key]['abun']
+
+                ### now that we've converted metabolite fluxes using abundance of previous time step, now update bacterial abundance for time t + 1
+
+                #model_abun_dict[key]['abun'] += model_abun_dict[key]['model'].summary()._objective_value * model_abun_dict[key]['abun'] * delta_t
+
+                #print(model_abun_dict[key]['model'].summary()._objective_value * delta_t * model_abun_dict[key]['abun'], 'add this amount')
+                #print(model_abun_dict[key]['model'].summary()._objective_value, 'model obj')
+                #print(model_abun_dict[key]['model'].summary()._objective_value * delta_t * model_abun_dict[key]['abun'], 'amount add')
+
+
+                #model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + model_abun_dict[key]['model'].summary()._objective_value * delta_t * model_abun_dict[key]['abun']
+                model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + model_abun_dict[key]['model'].summary()._objective_value
+
+                #print('Obj val', model_abun_dict[key]['model'].summary()._objective_value)
+
+            ### this is wrong for some reason... 
+            
+            model_abun_dict[key]['fba_biomass'].append(model_abun_dict[key]['abun'])
+            #print(model_abun_dict[model_names[i]]['abun'])
+
+            # dict of uptake for model x in i to n 
+            uptake_dict = dict(zip(temp_uptake.index, temp_uptake))
+            # add uptake_dict at time t to model storage
+            model_abun_dict[key]['flux_up'].append(uptake_dict.copy())
+            # dict of sec for model x in i to n 
+            secrete_dict = dict(zip(temp_secrete.index, temp_secrete))
+            # add sec_dict at time t to model storage
+            model_abun_dict[key]['flux_sec'].append(secrete_dict.copy())
+
+            for key in uptake_dict:
+                if key in total_sys_uptake.keys():
+                    #print(uptake_dict[key])
+                    #print(met_pool_dict[key])
+                    total_sys_uptake[key] += uptake_dict[key]
+                    #print(total_sys_uptake[key])
+                else:
+                    total_sys_uptake[key] = np.abs(uptake_dict[key])
+                #else:
+                    ### if there's a key in uptake dict that isn't found in met_pool something is wrong, kill sim ###
+                #    RuntimeError()
+
+            for key in secrete_dict:
+                if key in total_sys_secretion.keys():
+                    total_sys_secretion[key] += np.abs(secrete_dict[key])
+                else:
+                    if key == 'EX_biomass(e)':
+                        #print('biomass')
+                        continue
+                    else:
+                        ### here add new metabolite to metabolite pool 
+                        total_sys_secretion[key] = np.abs(secrete_dict[key])
+                        #print(np.abs(secrete_dict[key]))
+
+            met_pool_dict  = update_met_pool(uptake_dict=total_sys_uptake, secrete_dict=total_sys_secretion, met_pool_dict=met_pool_dict)
+           
+        else:
+
+            ### have to reset model key for model name
+            key = model_key
+
+            model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (delta_t*pfba_obj_val)
+
+            model_abun_dict[key]['fba_biomass'].append(model_abun_dict[key]['abun'])
+            # add uptake_dict at time t to model storage
+            model_abun_dict[key]['flux_up'].append(uptake_dict.copy())
+            # add sec_dict at time t to model storage
+            model_abun_dict[key]['flux_sec'].append(secrete_dict.copy())
+
+        # short term fix
+        # could just say if crap is smaller than 1e-10 just drop it and combine that with smaller enough time steps should be able to get around
+        # possibility of having negative flux values... I think 
+        #met_pool_dict = dict((k, v) for k, v in met_pool_dict.items() if v > 1e-10)
+        
+    return total_sys_uptake, total_sys_secretion, met_pool_dict
 
 
 def change_biomass_bounds(model_abun_dict, glv_params, t_pt):
@@ -340,6 +528,8 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
 
     met_pool_dict = dict(zip(environ_cond['reaction'], environ_cond['fluxValue']))
 
+    met_pool_df = environ_cond
+
     ## add initial conditions to the list of dicts of metabolite pool
 
     met_pool_over_time.append(met_pool_dict.copy())
@@ -352,8 +542,9 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
         print('Time step: ', i)
 
         # Step 1. Change media conditions of models 
+        change_media(model_abun_dict= model_abun_dict, supplied_media= met_pool_df)
 
-        change_media(model_abun_dict= model_abun_dict, supplied_media= environ_cond)
+        #change_media(model_abun_dict= model_abun_dict, supplied_media= environ_cond)
 
         # Step 2. Change upper bounds of biomass growth rate for each model
 
@@ -365,15 +556,35 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
 
         # Step 4. Adjust model optimization output fluxes based on abundance and time step size
 
-        total_sys_uptake, total_sys_secretion = model_opt_out(model_abun_dict=model_abun_dict, delta_t= (total_sim_time/num_t_steps), pfba=pfba)
+        total_sys_uptake, total_sys_secretion, met_pool_dict = model_opt_out(model_abun_dict=model_abun_dict, delta_t= (total_sim_time/num_t_steps), pfba=pfba, glv_params=glv_params, t_pt=i, model_names = list_model_names, met_pool_dict=met_pool_dict)
 
+        ### should actually move this update_met_pool function within model_opt_out so as to be done after every optimization of species 
         # Step 5. Update total metabolite pool
-        met_pool_dict  = update_met_pool(uptake_dict=total_sys_uptake, secrete_dict=total_sys_secretion, met_pool_dict=met_pool_dict)
-        print(met_pool_dict)
+        #met_pool_dict  = update_met_pool(uptake_dict=total_sys_uptake, secrete_dict=total_sys_secretion, met_pool_dict=met_pool_dict)
+
+        ### Here should include a function just in case to go through met_pool_dict and remove any keys with negative values
+        # https://www.geeksforgeeks.org/python-filter-the-negative-values-from-given-dictionary/
+        ## got from link above
+        # could just say if crap is smaller than 1e-10 just drop it and combine that with smaller enough time steps should be able to get around
+        # possibility of having negative flux values... I think 
+        ### hmm but what if it gets rid of things that are secreted in small amounts at beginning????
+        met_pool_dict = dict((k, v) for k, v in met_pool_dict.items() if v > 1e-15)
+
+
+        print('This is updated met_pool_dict:\n',met_pool_dict)
         met_pool_over_time.append(met_pool_dict.copy())
         #print(len(met_pool_over_time))
 
+        ### update met_pool_df
+        met_pool_df = pd.DataFrame.from_dict(met_pool_dict, orient='index',
+                       columns=['fluxValue'])
+        met_pool_df['fluxValue'] =  np.double(met_pool_df['fluxValue'])
+        met_pool_df = met_pool_df.reset_index()
+        met_pool_df.columns = ['reaction','fluxValue']
 
+        print('Updated met_pool', met_pool_df)
+
+        ### Think i needed to overwrite environ_cond met_pool_dict
 
     
     return met_pool_over_time, model_abun_dict
@@ -601,7 +812,7 @@ def bayesian_glv_setup_three_spec(params_init, microbe_data_list, abun_list):
 
         gamma_EP = pm.TruncatedNormal("gamma_EP", mu=params_init[3], sigma=0.1, lower=0, initval=params_init[3])
         #gamma_ED = pm.TruncatedNormal("gamma_ED", mu=params_init[4], sigma=0.1, lower=0, upper=0, initval=params_init[4])
-        gamma_PE = pm.TruncatedNormal("gamma_PE", mu=params_init[5], sigma=0.1, lower=0, initval=params_init[5])
+        gamma_PE = pm.TruncatedNormal("gamma_PE", mu=params_init[5], sigma=0.1, lower=-.1, initval=params_init[5])
         gamma_PD = pm.TruncatedNormal("gamma_PD", mu=params_init[6], sigma=0.1, lower=0, initval=params_init[6])
         #gamma_DE = pm.TruncatedNormal("gamma_DE", mu=params_init[7], sigma=0.1, lower=0, upper=0, initval=params_init[7])
         gamma_DP = pm.TruncatedNormal("gamma_DP", mu=params_init[8], sigma=0.1, upper=0, initval=params_init[8])
@@ -641,7 +852,7 @@ def bayesian_glv_run_three_spec(model, num_samples, chains):
     sampler = "DEMetropolisZ"
     tune = draws = num_samples
     with model:
-        trace_DEMZ = pm.sample(step=[pm.DEMetropolisZ(vars_list)], tune=tune, draws=draws, chains=chains, cores = 10)
+        trace_DEMZ = pm.sample(step=[pm.DEMetropolisZ(vars_list)], tune=tune, draws=draws, chains=chains, cores = chains)
     trace = trace_DEMZ
     #az.summary(trace)
 

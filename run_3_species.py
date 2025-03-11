@@ -41,23 +41,35 @@ import subprocess
 ### script for running glv_dfba inference
 from helper_functions import *
 
+os.environ["GRB_LICENSE_FILE"] = "/share/pkg/gurobi/11.0.2/lib/gurobi.lic"
+
 wd = '/Users/haydengallo/Documents/Bucci_Lab'
 
 ### Load in growth curve data 
 ### load in hanks data 
 
-cerillo_test_data = pd.read_csv('/home/hayden.gallo-umw/data/dfba_glv/averaged_cerillo.csv', index_col=0)
+cerillo_test_data = pd.read_csv('/home/hayden.gallo-umw/data/dfba_glv/cerillo_data_comp_analysis.csv', index_col=0)
+averaged_cerillo_df_for_testing = cerillo_test_data.unstack().reset_index()
+averaged_cerillo_df_for_testing.columns = ['Group_together', 'Time', 'OD']
+cerillo_test_data = averaged_cerillo_df_for_testing
+
+#cerillo_test_data = pd.read_csv('/home/hayden.gallo-umw/data/dfba_glv/averaged_cerillo.csv', index_col=0)
+
+### load in non-averaged data 
+non_avg_data = 'no'
+exp_data_dict = np.load('/home/hayden.gallo-umw/data/dfba_glv/exp_data_dict.npy', allow_pickle=True).item()
+
 
 ### Creating the 5 different sets of data EB_PC_co, PC_DO_co, EB_mono, PC_mono, DO_mono
 
 ### 1. co culture data of EB and PC
 
-co_culture_df = cerillo_test_data[(cerillo_test_data['Group_together'] == 'PCwEB') | (cerillo_test_data['Group_together'] == 'EBwPC')]
+co_culture_df = cerillo_test_data[(cerillo_test_data['Group_together'] == 'PCwEUB') | (cerillo_test_data['Group_together'] == 'EUBwPC')]
 EB_PC_co_culture_data = co_culture_df.pivot(index='Time', columns= 'Group_together', values = 'OD').reset_index()
 
 ### 2. mono culture data of EB
 
-EB_mono_culture_df = cerillo_test_data[(cerillo_test_data['Group_together'] == 'EB/EB')]
+EB_mono_culture_df = cerillo_test_data[(cerillo_test_data['Group_together'] == 'EUB/EUB')]
 EB_mono_culture_data = EB_mono_culture_df.pivot(index='Time', columns= 'Group_together', values = 'OD').reset_index()
 EB_mono_culture_data['PC'] = 0
 
@@ -92,16 +104,17 @@ EB_PC_co_culture_data.insert(3, 'DO', list_zero)
 
 ### setting up the initial abundances
 
-init_abun_co_EB_PC = [.002, .002, 0]
-init_abun_co_PC_DO = [0, .002, 0.002]
-EB_init_abun_mono = [.002, 0, 0]
-PC_init_abun_mono = [0, 0.002, 0]
-DO_init_abun_mono = [0, 0, 0.002]
+init_abun_co_EB_PC = [.005, .005, 0]
+init_abun_co_PC_DO = [0, .005, 0.005]
+EB_init_abun_mono = [.005, 0, 0]
+PC_init_abun_mono = [0, 0.005, 0]
+DO_init_abun_mono = [0, 0, 0.005]
 
 
-
-abun_list = [init_abun_co_EB_PC, init_abun_co_PC_DO, EB_init_abun_mono, PC_init_abun_mono, DO_init_abun_mono]
-microbe_data_list = [EB_PC_co_culture_data,DO_PC_co_culture_data, EB_mono_culture_data, PC_mono_culture_data, DO_mono_culture_data]
+### setup for the averaged data, use this data for getting weakly informative priors, then use non-averaged data in mcmc so we can get idea of uncertainty on predictions which can be propagated to 
+### predictions about metabolites etc. 
+abun_list_priors = [init_abun_co_EB_PC, init_abun_co_PC_DO, EB_init_abun_mono, PC_init_abun_mono, DO_init_abun_mono]
+microbe_data_list_priors = [EB_PC_co_culture_data,DO_PC_co_culture_data, EB_mono_culture_data, PC_mono_culture_data, DO_mono_culture_data]
 dataset_names = ['EB_PC_co', 'DO_PC_co', 'EB_mono', 'PC_mono', 'DO_mono']
 
 
@@ -120,7 +133,7 @@ model_names = ['eb', 'p_copri', 'do']
 
 ### Set initial parameter values 
 
-
+'''
 # monoculture growth rate of EB
 r_1 = .15
 # monoculture growth rate of P. copri
@@ -145,20 +158,47 @@ a_1 = -.05
 a_2 = -.05
 # intraspecies competition of DO
 a_3 = 0
+'''
+
+# monoculture growth rate of EB
+r_1 = .275
+# monoculture growth rate of P. copri
+r_2 = .26
+# monoculture growth rate of DO
+r_3 = .28
+# co culture growth rate of EB with PC
+gamma_EP = .05
+# co culture growth rate of EB with DO
+gamma_ED = 0
+# co culture growth rate of PC with EB
+gamma_PE = .01
+# co culture growth rate of PC with DO
+gamma_PD = .01
+# co culture growth rate of DO with EB
+gamma_DE = 0
+# co culture growth rate of DO with PC
+gamma_DP = -.12
+# intraspecies competition of EB
+a_1 = -.05
+# intraspecies competition of P. copri
+a_2 = -.05
+# intraspecies competition of DO
+a_3 = 0
+
 
 bnds = ((0, 1), (0, 1), (0, 1), (-1, 1), (0, 0), (-1, 1), (-1, 1), (0, 0), (-1, 0), (-1, 0), (-1, 0), (-1, 0))
 params = np.array([r_1, r_2, r_3, gamma_EP, gamma_ED, gamma_PE, gamma_PD, gamma_DE, gamma_DP, a_1, a_2, a_3])
 
-total_sim_time = 460
-num_t_steps = 460
+total_sim_time = 500
+num_t_steps = 500
 
 #print(np.finfo(float))
 
 num_samples_post = 50
-mcmc_samps = 17500
+mcmc_samps = 500000
 #mcmc_samps = 5000
 
-results = minimize(total_loss_multi, params, args=(microbe_data_list, abun_list), bounds=bnds)    
+results = minimize(total_loss_multi, params, args=(microbe_data_list_priors, abun_list_priors), bounds=bnds)    
 new_params = results.x
 print(new_params)
 
@@ -172,7 +212,27 @@ print(new_params)
 ### next perform bayesian glv fit using params_ls
 #print(params_ls)
 
-model = bayesian_glv_setup_three_spec(params_init=new_params, microbe_data_list=microbe_data_list, abun_list=abun_list)
+### setup data to be used as input for MCMC 
+
+if non_avg_data == 'yes':
+
+    microbe_data_list_mcmc = []
+    for key in exp_data_dict.keys():
+        for j in range(0, len(exp_data_dict[key])):
+            microbe_data_list_mcmc.append(exp_data_dict[key][j])
+
+    ### this is quite inefficient, so would be good to figure out a better way to do this later on 
+
+    abun_list_mcmc = [init_abun_co_EB_PC,init_abun_co_EB_PC,init_abun_co_EB_PC,init_abun_co_PC_DO,init_abun_co_PC_DO,init_abun_co_PC_DO,
+                EB_init_abun_mono,EB_init_abun_mono,EB_init_abun_mono,EB_init_abun_mono,EB_init_abun_mono,EB_init_abun_mono,
+                PC_init_abun_mono,PC_init_abun_mono,PC_init_abun_mono,PC_init_abun_mono,PC_init_abun_mono,PC_init_abun_mono,
+                DO_init_abun_mono,DO_init_abun_mono,DO_init_abun_mono,DO_init_abun_mono,DO_init_abun_mono,DO_init_abun_mono] 
+
+    model = bayesian_glv_setup_three_spec(params_init=new_params, microbe_data_list=microbe_data_list_mcmc, abun_list=abun_list_mcmc)
+
+else:
+
+    model = bayesian_glv_setup_three_spec(params_init=new_params, microbe_data_list=microbe_data_list_priors, abun_list=abun_list_priors)
 
 trace = bayesian_glv_run_three_spec(model=model, num_samples=mcmc_samps, chains = 10)
 
@@ -190,10 +250,10 @@ trace = bayesian_glv_run_three_spec(model=model, num_samples=mcmc_samps, chains 
 
 # Job and file paths
 job_name = "glv_dfba_testing"
-base_output_dir = "/home/hayden.gallo-umw/glv_dfba_testing/test_26_iPc610_p_copri"
-output_dir = "/home/hayden.gallo-umw/job_output/out_logs/glv_dfba_testing/test_26_iPc610_p_copri"
+base_output_dir = "/home/hayden.gallo-umw/glv_dfba_testing/test_54"
+output_dir = "/home/hayden.gallo-umw/job_output/out_logs/glv_dfba_testing/test_54"
 os.makedirs(output_dir, exist_ok=True)
-error_dir = "/home/hayden.gallo-umw/job_output/error_logs/glv_dfba_testing/test_26_iPc610_p_copri"
+error_dir = "/home/hayden.gallo-umw/job_output/error_logs/glv_dfba_testing/test_54"
 os.makedirs(error_dir, exist_ok=True)
 python_script_path = "/home/hayden.gallo-umw/glv_dfba_implement/glv_dfba/batch_sims_from_posterior.py"
 
@@ -210,7 +270,10 @@ trace.to_netcdf(trace_save_name)
 
 
 # looping through all of the datasets and batch submitting all jobs so N 
-for j, init_abun in enumerate(abun_list):
+for j, init_abun in enumerate(abun_list_priors):
+    ###                                                                                        ###
+    ### think i want to loop over the single instances of init_abun not what was fed into mcmc ###
+    ###                                                                                        ###
 
     subdirectory = base_output_dir + '/' + dataset_names[j]
     os.makedirs(subdirectory, exist_ok=True)
@@ -267,3 +330,7 @@ for j, init_abun in enumerate(abun_list):
             print(f"Submitted job for params {params}")
         except subprocess.CalledProcessError as e:
             print(f"Failed to submit job for params {params}: {e}")
+
+
+### Ok now here after all of the batched out jobs have finished, automatically make plots
+### to do this
