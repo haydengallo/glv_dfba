@@ -177,9 +177,6 @@ params = np.array([r_1, r_2, gamma_1, gamma_2, a_1, a_2])
 total_sim_time = 460
 num_t_steps = 460
 
-<<<<<<< HEAD
-print(np.finfo(float))
-=======
 #print(np.finfo(float))
 
 multi_dataset = False
@@ -210,17 +207,9 @@ if multi_dataset == True:
 
     #print(param_dict)
 
->>>>>>> hpc_dev
 
     ### Submitting batch jobs to the cluster
 
-<<<<<<< HEAD
-glv_out, params_ls, time = ls_glv_fit(init_abun = init_abun, params = params, total_sim_time=total_sim_time, time_steps=num_t_steps, microbe_data=microbe_data)
-print(params_ls)
-### next perform bayesian glv fit using params_ls
-=======
-
->>>>>>> hpc_dev
 
     # Job and file paths
     job_name = "glv_dfba_testing"
@@ -387,7 +376,6 @@ else:
 
 '''
 
-<<<<<<< HEAD
 ### Submitting batch jobs to the cluster
 
 
@@ -446,7 +434,5 @@ python {python_script_path} --params {params_str}  --model_names {model_names_st
         print(f"Failed to submit job for params {params}: {e}")
 
 
-=======
->>>>>>> hpc_dev
 
 '''
