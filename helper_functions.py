@@ -86,15 +86,42 @@ def change_media(model_abun_dict, supplied_media):
 
     for key in model_abun_dict:
         
-        temp_media = make_media(model_abun_dict[key]['model'], media=supplied_media)
-
+        #temp_media = make_media(model_abun_dict[key]['model'], media=supplied_media)
+        #print('This is temp_media', temp_media)
         # set media conditions to be the temp_media
         #print('this is temp_media', temp_media)
-        model_abun_dict[key]['model'].medium = temp_media
+        #model_abun_dict[key]['model'].medium = temp_media
 
+        ### Manual setting of conditions 
+        # Find all exchange reactions ending with "_b"
+        ex_b_reactions = [rxn for rxn in model_abun_dict[key]['model'].reactions if rxn.id.startswith('EX_') and rxn.id.endswith('_b')]
+
+        #print(f"Found {len(ex_b_reactions)} EX_*_b reactions:")
+
+        # Set all lower bounds to 0, with exceptions from diet data
+        for rxn in ex_b_reactions:
+            if rxn.id in supplied_media['reaction'].to_list():  # Compare reaction ID, not object
+                #print('yes - found in diet')
+                # Fix the loc indexing - need to find the row where reaction matches
+                #flux_value = temp_media[rxn.id]
+                #rxn.lower_bound = -100.0#-1.0*flux_value
+                rxn.lower_bound = -1.0*supplied_media[supplied_media['reaction'] == rxn.id]['fluxValue'].iloc[0]
+                #print(f"Setting {rxn.id} lower bound to {rxn.lower_bound}")
+            else:
+                #print(f"Setting {rxn.id} lower bound from {rxn.lower_bound} to 0")
+                rxn.lower_bound = 0
+
+
+
+        #print('This is new media conditions for model', model_abun_dict[key]['model'].medium)
         ### here we take our temp media and apply to model.medium while also checking to make sure lengths are correct, if len(temp_media) != len(model.medium.keys) 
         ### then we determine which metabolites are missing and manually change them in model.reactions.get_by_id('reaction').lower_bound = -flux
         # think this was unnecessary and causing problems
+        #keys_only_in_dict1 = temp_media.keys() - model_abun_dict[key]['model'].medium.keys()
+        #keys_only_in_dict2 = model_abun_dict[key]['model'].medium.keys() - temp_media.keys()
+        #print('This model:', key)
+        #print(f"Keys only in temp_media: {keys_only_in_dict1}")
+        #print(f"Keys only in model medium: {keys_only_in_dict2}")
         '''
         if len(temp_media) == len(model_abun_dict[key]['model'].medium.keys()):
             #print('good to go')
@@ -140,16 +167,20 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
 
             # optimize model i via pfba 
             temp_pfba = cobra.flux_analysis.pfba(model_abun_dict[key]['model'])
-            print('Status of pfba:', temp_pfba.status)
-            print('pfba', temp_pfba)
+            #test = model_abun_dict[key]['model'].slim_optimize()
+            #print(test)
+            #print('Status of pfba:', temp_pfba.status)
+            #print('pfba', temp_pfba)
             biomass_pattern = re.compile(r'(bio)', re.IGNORECASE)
             biomass_reactions = [rxn for rxn in model_abun_dict[key]['model'].reactions if biomass_pattern.search(rxn.id)]
             biomass_reactions = str(biomass_reactions[-1]).split(':')[0]
-            print('Upper_bound:',model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound)
+            #print('Upper_bound:',model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound)
             #print('Print medium used for optimization:',model_abun_dict[key]['model'].medium)
             ## seem to have some infeasible solutions, unclear why 
             # put fluxes in df for manipulation
-            temp_pfba_df = temp_pfba.to_frame().filter(regex='EX_', axis = 0)
+
+            ### switch out regex string with 'EX_' if using AGORA models###
+            temp_pfba_df = temp_pfba.to_frame().filter(regex='EX_.*_b$|bio', axis = 0)
             
             # filter out fluxes that are secreted
             # signs are flipped here compared to standard fba optimization in cobrapy so must change them
@@ -176,15 +207,17 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
             #    pfba_obj_val = 0
             #else:
             #    pfba_obj_val = test_secrete.filter(regex='bio', axis=0)['fluxes'].iloc[0]
-
-            print('Obj val', pfba_obj_val)
+            if pfba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound:
+                print('Upper bound not reached:')
+                print('Upper_bound:',model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound)
+                print('Obj val', pfba_obj_val)
             ## have to do this after confirming that no negative values were created
             #model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (delta_t*pfba_obj_val)
         
         else:
 
-            test_secrete = model_abun_dict[key]['model'].summary().secretion_flux.loc[model_abun_dict[key]['model'].summary().secretion_flux['reaction'].filter(regex='EX_')]
-            test_uptake = model_abun_dict[key]['model'].summary().uptake_flux.loc[model_abun_dict[key]['model'].summary().uptake_flux['reaction'].filter(regex='EX_')]
+            test_secrete = model_abun_dict[key]['model'].summary().secretion_flux.loc[model_abun_dict[key]['model'].summary().secretion_flux['reaction'].filter(regex='EX_.*_b$|bio')]
+            test_uptake = model_abun_dict[key]['model'].summary().uptake_flux.loc[model_abun_dict[key]['model'].summary().uptake_flux['reaction'].filter(regex='EX_.*_b$|bio')]
 
             test_secrete = test_secrete[test_secrete['flux'] !=0 ]
             test_uptake = test_uptake[test_uptake['flux'] !=0 ]
@@ -278,29 +311,50 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
             met_pool_df.columns = ['reaction','fluxValue']
 
             print('This is met pool from previous time step because went into negatives', met_pool_df)
+            
 
+            ### Need to replace this for Kbase models that aren't translated to vmh ###
             ### All i need to change is the media for the model, nothing else, biomass bounds do not change
-            temp_media = make_media(model_abun_dict[key]['model'], media=met_pool_df)
+            #temp_media = make_media(model_abun_dict[key]['model'], media=met_pool_df)
 
             # set media conditions to be the temp_media
 
-            model_abun_dict[key]['model'].medium = temp_media
+            #model_abun_dict[key]['model'].medium = temp_media
+
+            ex_b_reactions = [rxn for rxn in model_abun_dict[key]['model'].reactions if rxn.id.startswith('EX_') and rxn.id.endswith('_b')]
+
+            #print(f"Found {len(ex_b_reactions)} EX_*_b reactions:")
+
+            # Set all lower bounds to 0, with exceptions from diet data
+            for rxn in ex_b_reactions:
+                if rxn.id in met_pool_df['reaction'].to_list():  # Compare reaction ID, not object
+                    #print('yes - found in diet')
+                    # Fix the loc indexing - need to find the row where reaction matches
+                    #flux_value = temp_media[rxn.id]
+                    #rxn.lower_bound = -100.0#-1.0*flux_value
+                    rxn.lower_bound = -1.0*met_pool_df[met_pool_df['reaction'] == rxn.id]['fluxValue'].iloc[0]
+                    #print(f"Setting {rxn.id} lower bound to {rxn.lower_bound}")
+                else:
+                    #print(f"Setting {rxn.id} lower bound from {rxn.lower_bound} to 0")
+                    rxn.lower_bound = 0
+
+            ### end of additions ###
 
             if pfba == True:
 
                 # optimize model i via pfba 
                 temp_pfba = cobra.flux_analysis.pfba(model_abun_dict[key]['model'])
-                print('Status of pfba:', temp_pfba.status)
+                #print('Status of pfba:', temp_pfba.status)
                 print('pfba', temp_pfba)
                 biomass_pattern = re.compile(r'(bio)', re.IGNORECASE)
                 biomass_reactions = [rxn for rxn in model_abun_dict[key]['model'].reactions if biomass_pattern.search(rxn.id)]
                 biomass_reactions = str(biomass_reactions[-1]).split(':')[0]
-                print('Upper_bound:',model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound)
+                #print('Upper_bound:',model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound)
                 #print('Upper_bound:',model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound)
-                print('Print medium used for optimization:',model_abun_dict[key]['model'].medium)
+                #print('Print medium used for optimization:',model_abun_dict[key]['model'].medium)
                 ## seem to have some infeasible solutions, unclear why 
                 # put fluxes in df for manipulation
-                temp_pfba_df = temp_pfba.to_frame().filter(regex='EX_', axis = 0)
+                temp_pfba_df = temp_pfba.to_frame().filter(regex='EX_.*_b$|bio', axis = 0)
                 
                 # filter out fluxes that are secreted
                 # signs are flipped here compared to standard fba optimization in cobrapy so must change them
@@ -328,7 +382,10 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                 #else:
                 #    pfba_obj_val = test_secrete.filter(regex='bio', axis=0)['fluxes'].iloc[0]
 
-                print('Obj val', pfba_obj_val)
+                if pfba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound:
+                    print('Upper bound not reached:')
+                    print('Upper_bound:',model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound)
+                    print('Obj val', pfba_obj_val)
 
                 ### Adjust abundances such that if negative growth rate abundance does decrease according to negative growth rate of MDSINE, but if positive abun adjusts according to FBA output
 
@@ -336,6 +393,7 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
 
                     print('Model abun before negativity:', model_abun_dict[key]['abun'])
                     model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (model_abun_dict[key]['abun']*delta_t*model_abun_dict[key]['curr_gr_rt'])
+                    #model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (model_abun_dict[key]['abun']*model_abun_dict[key]['curr_gr_rt'])
                     print('Model abun after negativity:', model_abun_dict[key]['abun'])
 
                     ## Basically if ever gets to zero or negative reset to a very small number such that always available to grow 
@@ -350,8 +408,8 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
             
             else:
 
-                test_secrete = model_abun_dict[key]['model'].summary().secretion_flux.loc[model_abun_dict[key]['model'].summary().secretion_flux['reaction'].filter(regex='EX_')]
-                test_uptake = model_abun_dict[key]['model'].summary().uptake_flux.loc[model_abun_dict[key]['model'].summary().uptake_flux['reaction'].filter(regex='EX_')]
+                test_secrete = model_abun_dict[key]['model'].summary().secretion_flux.loc[model_abun_dict[key]['model'].summary().secretion_flux['reaction'].filter(regex='EX_.*_b$|bio')]
+                test_uptake = model_abun_dict[key]['model'].summary().uptake_flux.loc[model_abun_dict[key]['model'].summary().uptake_flux['reaction'].filter(regex='EX_.*_b$|bio')]
 
                 test_secrete = test_secrete[test_secrete['flux'] !=0 ]
                 test_uptake = test_uptake[test_uptake['flux'] !=0 ]
@@ -412,7 +470,7 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                         #print(np.abs(secrete_dict[key]))
 
             met_pool_dict  = update_met_pool(uptake_dict=total_sys_uptake, secrete_dict=total_sys_secretion, met_pool_dict=met_pool_dict)
-            print('this is met pool dict directly after update 2', met_pool_dict)
+            #print('this is met pool dict directly after update 2', met_pool_dict)
         else:
 
             ### have to reset model key for model name
@@ -428,6 +486,7 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
 
                 print('Model abun before negativity:', model_abun_dict[key]['abun'])
                 model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (model_abun_dict[key]['abun']*delta_t*model_abun_dict[key]['curr_gr_rt'])
+                #model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (model_abun_dict[key]['abun']*model_abun_dict[key]['curr_gr_rt'])
                 print('Model abun after negativity:', model_abun_dict[key]['abun'])
                 ## Basically if ever gets to zero or negative reset to a very small number such that always available to grow 
 
@@ -436,8 +495,13 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                     model_abun_dict[key]['abun'] = 1e-15
 
             else:
+                if pfba == True:
+                
+                    model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (model_abun_dict[key]['abun']*delta_t*pfba_obj_val)
+                
+                else:
 
-                model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (model_abun_dict[key]['abun']*delta_t*pfba_obj_val)
+                    model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + model_abun_dict[key]['model'].summary()._objective_value * delta_t * model_abun_dict[key]['abun']
 
             model_abun_dict[key]['fba_biomass'].append(model_abun_dict[key]['abun'])
             # add uptake_dict at time t to model storage
@@ -466,7 +530,7 @@ def change_biomass_bounds(model_abun_dict, glv_params, t_pt):
     
     #gr_rt_t_pt = generalized_gLV(temp_abun_list, t_pt, params=glv_params)
     gr_rt_t_pt = multi_spec_gLV(temp_abun_list, t_pt, params=glv_params)
-    print(gr_rt_t_pt)
+    #print(gr_rt_t_pt)
 ### might be something wrong here, not quite sure, but only happens for DO so leads me to believe its index related
     for count, key in enumerate(model_abun_dict):
         if gr_rt_t_pt[count] > 0:
@@ -482,7 +546,7 @@ def change_biomass_bounds_MDSINE(model_abun_dict, t_pt, MDSINE_rates):
     biomass_pattern = re.compile(r'(bio)', re.IGNORECASE)
     #gr_rt_t_pt = generalized_gLV(temp_abun_list, t_pt, params=glv_params)
     gr_rt_t_pt = MDSINE_rates.iloc[:,t_pt].tolist()
-    print(gr_rt_t_pt)
+    #print(gr_rt_t_pt)
 ### might be something wrong here, not quite sure, but only happens for DO so leads me to believe its index related
     for count, key in enumerate(model_abun_dict):
 
@@ -555,7 +619,7 @@ def opt_model(model_abun_dict, pfba):
 
 ### this is the main function that wraps all other helper functions ### 
 
-def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time, num_t_steps, glv_out, glv_params, environ_cond, pfba, MDSINE_rates, Diet, time_points_feed):
+def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time, num_t_steps, glv_out, glv_params, environ_cond, pfba, MDSINE_rates, Diet, time_points_feed, time_scaler):
 
     # implementing a static optimization approach dfba
     # this is a basic approach and will potentially implement more efficient approach later on 
@@ -608,7 +672,7 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
     met_pool_over_time = []
 
     met_pool_dict = dict(zip(environ_cond['reaction'], environ_cond['fluxValue']))
-
+    init_cond_dict = met_pool_dict
     met_pool_df = environ_cond
 
     ## add initial conditions to the list of dicts of metabolite pool
@@ -618,6 +682,8 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
     # Step 0. Create model_abun_dict, main dictionary for everything
 
     model_abun_dict = init_model_abun(model_names=list_model_names,models = list_models, init_abun=initial_abundance, glv_out=glv_out)
+
+    diet_dict = dict(zip(Diet['reaction'], Diet['fluxValue']))
     
     for i in range(0, num_t_steps):
         print('Time step: ', i)
@@ -649,7 +715,7 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
         # Step 2a. This is for when utilizing output from MDSINE and not utilizing glv_params
         if glv_params == None:
 
-            print('Using MDSINE rates')
+            #print('Using MDSINE rates')
             change_biomass_bounds_MDSINE(model_abun_dict=model_abun_dict, t_pt=i, MDSINE_rates=MDSINE_rates)
         else:
         # Step 2b: This is for when utilizing output from gLV directly such that params are needed    
@@ -692,22 +758,76 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
         met_pool_df['fluxValue'] =  np.double(met_pool_df['fluxValue'])
         met_pool_df = met_pool_df.reset_index()
         met_pool_df.columns = ['reaction','fluxValue']
+        '''
+        if i > time_scaler/12:
+            met_pool_lag = int(time_scaler/12)
+            #Diet_dict = Diet.set_index('reaction').to_dict()
+            #print('This is met pool at time ', i-met_pool_lag, ':', met_pool_over_time[i-met_pool_lag])
+            #ratios = {k: (1-((diet_dict[k] / met_pool_over_time[i-met_pool_lag][k])/(1))) for k in diet_dict if k in met_pool_over_time[i-met_pool_lag]}
+            # Saturating limiter: small when concentration >> diet, near 1 when diet ~ concentration
+            ratios = {
+                k: max(0.98, min(0.999, diet_dict[k] / (met_pool_over_time[i - met_pool_lag][k] + diet_dict[k] + 1e-8)))
+                for k in diet_dict
+                if k in met_pool_over_time[i - met_pool_lag]
+            }
+
+
+            extra_keys = [k for k in met_pool_over_time[i-met_pool_lag] if k not in diet_dict]
+
+            #for key in ratios:
+            #    old = met_pool_df.loc[met_pool_df['reaction'] == key, 'fluxValue'].iloc[0]
+            for key, ratio in ratios.items():
+                met_pool_df.loc[met_pool_df['reaction'] == key, 'fluxValue'] *= ratio
+
+                #print('Old met conc', old)
+                if ratios[key] < 0.999:
+                    met_pool_df.loc[met_pool_df['reaction'] == key, 'fluxValue'] *= ratios[key]
+                    #new = met_pool_df.loc[met_pool_df['reaction'] == key, 'fluxValue'].iloc[0]
+                    #print('New met conc', new)
+                else:
+                    met_pool_df.loc[met_pool_df['reaction'] == key, 'fluxValue'] *= 0.999
+                    #new = met_pool_df.loc[met_pool_df['reaction'] == key, 'fluxValue'].iloc[0]     
+                    #print('New met conc', new)
+
+            for met in extra_keys:
+                #old = met_pool_df.loc[met_pool_df['reaction'] == met, 'fluxValue'].iloc[0]
+                #print('Old met conc', old)
+                met_pool_df.loc[met_pool_df['reaction'] == met, 'fluxValue'] *= 0.999
+                #new = met_pool_df.loc[met_pool_df['reaction'] == met, 'fluxValue'].iloc[0]
+                #print('New met conc', new)
+
+            #for key in ratios:
+            #    print('Old met conc', met_pool_df[met_pool_df['reaction'] == key]['fluxValue'].iloc[0])
+            #    met_pool_df[met_pool_df['reaction'] == key]['fluxValue'].iloc[0]=ratios[key]*met_pool_df[met_pool_df['reaction'] == key]['fluxValue'].iloc[0]
+            #    print('New met conc', met_pool_df[met_pool_df['reaction'] == key]['fluxValue'].iloc[0])
+
+            #for met in extra_keys:
+            #    print('Old met conc', met_pool_df[met_pool_df['reaction'] == met]['fluxValue'].iloc[0])
+            #    met_pool_df[met_pool_df['reaction'] == met]['fluxValue'].iloc[0]=.999*met_pool_df[met_pool_df['reaction'] == met]['fluxValue'].iloc[0]
+            #    print('New met conc', met_pool_df[met_pool_df['reaction'] == met]['fluxValue'].iloc[0])
 
         # Putting cont feeding at the end of every timepoint, i.e. for next time point and to get around adding at zeroth time
         # Stack the two dataframes
         ### Decay rate
         #print('Metabolite pool before decay term', met_pool_df)
-        met_pool_df['fluxValue'] = .995*met_pool_df['fluxValue']
+        else:
+            met_pool_df['fluxValue'] = .999*met_pool_df['fluxValue']
+        '''
+        met_pool_df['fluxValue'] = (1-(1/384))*met_pool_df['fluxValue']
         #print('Metabolite pool after decay term', met_pool_df)
         met_pool_df = pd.concat([met_pool_df, Diet])
 
         # Group by reaction and sum
         met_pool_df = met_pool_df.groupby('reaction', as_index=False).sum()
+
+        ## naive threshold, if anything is greater than 100 set it back to 100
+        #met_pool_df['fluxValue'] = met_pool_df['fluxValue'].clip(upper=10) 
         met_pool_dict = dict(zip(met_pool_df['reaction'], met_pool_df['fluxValue']))
         met_pool_over_time.append(met_pool_dict.copy())
+        #met_pool_dict['EX_cpd00076_b'] = 2.0
 
 
-        print('Updated met_pool', met_pool_df)
+        #print('Updated met_pool', met_pool_df)
 
         ### Think i needed to overwrite environ_cond met_pool_dict
 
