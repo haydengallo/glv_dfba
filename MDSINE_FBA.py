@@ -40,6 +40,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 import json
 
 from Bio import Entrez
+import logging
 
 ### Need to activate cobra_agorra conda environment ###
 
@@ -50,6 +51,11 @@ start_time = datetime.now()
 ### Manual Parameters to set ###
 ################################
 
+#################################################################################################################################################################
+### this is used to surpress all logging from loading in the kbase models with cobra, such that they don't get added to the glv_fba log file and overcrowd it ### 
+logging.getLogger("cobra").setLevel(logging.ERROR)
+#################################################################################################################################################################
+
 subject_dict = {1953:1948, 1507:1510, 1999:2000}
 
 for key in subject_dict.keys():
@@ -59,15 +65,15 @@ for key in subject_dict.keys():
     ### subject to predict, subject with metabolomics data
     subject_to_predict = subject_dict[key]#1948#1510#2000
     ### Set test num
-    test_num = 60
+    test_num = 72
     ### set time scaler
-    time_scaler = 24
+    time_scaler = 192#24
     ### Scaling factor
-    scal_fact = 1e12#9.220114e10
+    scal_fact = 1e10#9.220114e10
     ### Total time steps
-    total_time_steps = 415
+    total_time_steps = 3320
     ### Simulation notes
-    notes = 'just hourly timesteps i guess'
+    notes = 'full sim with fba and new negativity scheme'
 
 
 
@@ -262,9 +268,9 @@ for key in subject_dict.keys():
     for i in range(0, len(bi_hourly_resolution_latent_traj.columns)-1):
 
         if i == 0:
-            base_array = np.linspace(bi_hourly_resolution_latent_traj.iloc[:,i], bi_hourly_resolution_latent_traj.iloc[:,i+1], 2)
+            base_array = np.linspace(bi_hourly_resolution_latent_traj.iloc[:,i], bi_hourly_resolution_latent_traj.iloc[:,i+1], 9)
         else:
-            temp_array = np.linspace(bi_hourly_resolution_latent_traj.iloc[:,i], bi_hourly_resolution_latent_traj.iloc[:,i+1], 2)[1:,:]
+            temp_array = np.linspace(bi_hourly_resolution_latent_traj.iloc[:,i], bi_hourly_resolution_latent_traj.iloc[:,i+1], 9)[1:,:]
             base_array = np.concatenate((base_array, temp_array))
     
 
@@ -318,7 +324,7 @@ for key in subject_dict.keys():
         #    break
         #print(key.split('_'))
         model_name = key.split('_')[0] + '_' + key.split('_')[1]
-        print(model_name)
+        #print(model_name)
         model = cobra.io.read_sbml_model(cobra_models[key])
         loaded_models[model_name] = model
         #count+=1
@@ -343,7 +349,7 @@ for key in subject_dict.keys():
     #refseq_to_agora_df.loc['18673193aa6bf30c6a1e71ac504e04df','Model_Names'] = 'Staphylococcus_equorum'
     #refseq_to_agora_df.loc['18673193aa6bf30c6a1e71ac504e04df','Agora_Name'] = 'Staphylococcus_equorum_subsp_equorum_Mu2'
 
-    refseq_to_agora_df
+    #refseq_to_agora_df
 
     ASV_string_to_species_names_dict = dict(zip(refseq_to_agora_df.index.tolist(), refseq_to_agora_df['Model_Names']))
 
@@ -355,12 +361,12 @@ for key in subject_dict.keys():
 
 
     # dict of model names and models 
-    models_for_FBA
+    #models_for_FBA
 
 
 
     bugs_to_filter = list(models_for_FBA.keys())
-    bugs_to_filter
+    #bugs_to_filter
 
     abun_hr_df_filt = bi_hourly_resolution_latent_traj.reindex(bugs_to_filter)
 
@@ -430,8 +436,8 @@ for key in subject_dict.keys():
     ### need to add required nutrients from gapfilled RC_mm_media to initial conditions for subject but without overriding the 60 metabolite values we want as initial values 
 
 
-    print(len(np.unique(sub_1948_init_mets['reaction'].tolist())))
-    print(sub_1948_init_mets['reaction'].value_counts())
+    #print(len(np.unique(sub_1948_init_mets['reaction'].tolist())))
+    #print(sub_1948_init_mets['reaction'].value_counts())
 
     ### Translate metabolites in diet and initial conditions back to Kbase nomenclature b/c going to use kbase reconstructions instead of translated models
     rc_diet_MS_convert = rc_diet_MS_convert[['compounds', 'maxflux']]
@@ -467,10 +473,10 @@ for key in subject_dict.keys():
     metabolomics_data_initial_sub_1948
 
     for i in range(0, len(metabolomics_data_initial_sub_1948)):
-        metabolomics_data_initial_sub_1948['reaction'].iloc[i] = 'EX_' + metabolomics_data_initial_sub_1948['reaction'].iloc[i]  + '_b'
+        metabolomics_data_initial_sub_1948.loc[i,'reaction'] = 'EX_' + metabolomics_data_initial_sub_1948['reaction'].iloc[i]  + '_b'
 
     for i in range(0, len(rc_diet_MS_convert)):
-        rc_diet_MS_convert['reaction'].iloc[i]  = 'EX_' + rc_diet_MS_convert['reaction'].iloc[i]  + '_b'
+        rc_diet_MS_convert.loc[i, 'reaction']  = 'EX_' + rc_diet_MS_convert['reaction'].iloc[i]  + '_b'
 
     diet_scaler = (5/time_scaler)
 
@@ -481,7 +487,7 @@ for key in subject_dict.keys():
     ### Read in adjusted diet data from mouse GEM mets_to_add_df
 
     RC_diet_adjusted = pd.read_csv('/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun/RC_diet_adjust_mouse_GEM.csv')
-    RC_diet_adjusted
+    #RC_diet_adjusted
 
     #### Add necessary extra metabolites for bacterial growth 
 
@@ -502,9 +508,6 @@ for key in subject_dict.keys():
 
     RC_diet_adjusted['fluxValue'] = (diet_scaler*RC_diet_adjusted['fluxValue'])
 
-
-    met_pool_over_time, model_abun_dict = static_dfba(list_model_names=model_names, list_models=models_list, initial_abundance=init_abun, total_sim_time=total_time_steps, num_t_steps=total_time_steps, glv_out=np.array(abun_hr_df_filt.T), glv_params=None, environ_cond=metabolomics_data_initial_sub_1948, pfba=True, MDSINE_rates=rate_df_filt, Diet=RC_diet_adjusted, time_points_feed = feeding_schedule, time_scaler=time_scaler)
-
     ### Save the results
     output_folder = 'filtering_hourly_resolution'
 
@@ -512,6 +515,11 @@ for key in subject_dict.keys():
 
     plot_dir = Path(plot_dir_path)
     os.makedirs(plot_dir, exist_ok=True)
+
+
+    met_pool_over_time, model_abun_dict = static_dfba(list_model_names=model_names, list_models=models_list, initial_abundance=init_abun, total_sim_time=total_time_steps, num_t_steps=total_time_steps, glv_out=np.array(abun_hr_df_filt.T), glv_params=None, environ_cond=metabolomics_data_initial_sub_1948, pfba=False, MDSINE_rates=rate_df_filt, Diet=RC_diet_adjusted, time_points_feed = feeding_schedule, time_scaler=time_scaler, output_file_path = plot_dir_path)
+
+
 
 
     met_save = plot_dir_path + '/Subject_' + str(subject_to_plot) + '_met_pool.npy'
@@ -819,6 +827,7 @@ for key in subject_dict.keys():
     second_plot_file_name = plot_dir_path + '/Subject_' + str(subject_to_plot) + '_stacked_hist_line_plots_FBA_' + str(test_num) + '.pdf'
     plt.savefig(second_plot_file_name, bbox_inches="tight")
     #plt.show()
+    plt.close()
 
 
 
@@ -896,6 +905,7 @@ for key in subject_dict.keys():
     plot_file_name = plot_dir_path + '/Subject_' + str(subject_to_plot) + '_metabolites_over_time_test_filt' + str(test_num) + '.pdf'
     plt.savefig(plot_file_name, bbox_inches="tight")
     #plt.show()
+    plt.close()
 
 
     # %%
@@ -1050,6 +1060,7 @@ for key in subject_dict.keys():
     plot_file_name = plot_dir_path + '/Subject_' + str(subject_to_plot) + '_mets_exp_vs_sim_over_time_test_' + str(test_num) + '.pdf'
     plt.savefig(plot_file_name, bbox_inches="tight")
     #plt.show()
+    plt.close()
 
     # %%
     metabolomics_data_sub_1948 = metabolomics_data_sub_1948.T
@@ -1170,6 +1181,7 @@ for key in subject_dict.keys():
     plot_file_name = plot_dir_path + '/Subject_' + str(subject_to_plot) + '_mets_scatter_exp_vs_sim_' + str(test_num) + '.pdf'
     plt.savefig(plot_file_name, bbox_inches="tight")
     #plt.show()
+    plt.close()
 
 end_time = datetime.now()
 

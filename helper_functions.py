@@ -37,6 +37,8 @@ from scipy.stats import truncnorm
 import copy
 from pathlib import Path
 import re
+import logging
+from tqdm import tqdm
 
 
 
@@ -110,9 +112,11 @@ def change_media(model_abun_dict, supplied_media):
             else:
                 #print(f"Setting {rxn.id} lower bound from {rxn.lower_bound} to 0")
                 rxn.lower_bound = 0
+                ### here close the upper bound of the non-existent reactions too 
+                #rxn.upper_bound = 0
 
 
-
+        #logging.info('This is new media conditions for model', model_abun_dict[key]['model'].medium)
         #print('This is new media conditions for model', model_abun_dict[key]['model'].medium)
         ### here we take our temp media and apply to model.medium while also checking to make sure lengths are correct, if len(temp_media) != len(model.medium.keys) 
         ### then we determine which metabolites are missing and manually change them in model.reactions.get_by_id('reaction').lower_bound = -flux
@@ -143,6 +147,10 @@ def change_media(model_abun_dict, supplied_media):
 
 def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_pt, model_names):
 
+    ### just set delta_t equal to 1 for now 
+
+    delta_t = 1
+
     #total_sys_uptake = {}
     #total_sys_secretion = {}
 
@@ -157,11 +165,16 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
     for model_i in order_of_models:
         key = list(model_abun_dict.keys())[model_i]
         model_key = key
-        print('Bacteria is:', key)
+        #print('Bacteria is:', key)
+        logging.info(f"Bacteria is: {key}")
 
         # initialize this dict for every model and update met_pool_dict after every model
         total_sys_uptake = {}
         total_sys_secretion = {}
+
+        ### need this just in case fluxes go negative and we have calculated a new abundance with negative fluxes, if so then we need to go back to the 
+        ### model abundance at previous timestep b/c if not we have already added or subtracted to model abundance before handling negative fluxes
+        model_abun_st_t_step = model_abun_dict[key]['abun']
 
         if pfba == True:
 
@@ -171,6 +184,8 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
             #print(test)
             #print('Status of pfba:', temp_pfba.status)
             #print('pfba', temp_pfba)
+            logging.info(f'Status of pfba: {temp_pfba.status}')
+            logging.info(f'pfba: {temp_pfba}')
             biomass_pattern = re.compile(r'(bio)', re.IGNORECASE)
             biomass_reactions = [rxn for rxn in model_abun_dict[key]['model'].reactions if biomass_pattern.search(rxn.id)]
             biomass_reactions = str(biomass_reactions[-1]).split(':')[0]
@@ -208,22 +223,91 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
             #else:
             #    pfba_obj_val = test_secrete.filter(regex='bio', axis=0)['fluxes'].iloc[0]
             if pfba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound:
-                print('Upper bound not reached:')
-                print('Upper_bound:',model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound)
-                print('Obj val', pfba_obj_val)
+                #print('Upper bound not reached:')
+                #print('Upper_bound:',model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound)
+                #print('Obj val', pfba_obj_val)
+                logging.warning(f'Upper bound not reached:')
+                logging.warning(f'Upper_bound: {model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound}')
+                logging.warning(f'Obj val: {pfba_obj_val}')
             ## have to do this after confirming that no negative values were created
             #model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (delta_t*pfba_obj_val)
-        
+                
+                        ### Adjust abundances such that if negative growth rate abundance does decrease according to negative growth rate of MDSINE, but if positive abun adjusts according to FBA output
+
+            if model_abun_dict[key]['curr_gr_rt'] < 0:
+
+                #print('Model abun before negativity:', model_abun_dict[key]['abun'])
+                logging.info(f"Model abun before negativity where 3: {model_abun_dict[key]['abun']}")
+                model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (model_abun_dict[key]['abun']*delta_t*model_abun_dict[key]['curr_gr_rt'])
+                #model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (model_abun_dict[key]['abun']*model_abun_dict[key]['curr_gr_rt'])
+                #print('Model abun after negativity:', model_abun_dict[key]['abun'])
+                logging.info(f"Model abun after negativity: {model_abun_dict[key]['abun']}")
+
+                ## Basically if ever gets to zero or negative reset to a very small number such that always available to grow 
+
+                if model_abun_dict[key]['abun'] <= 0:
+
+                    model_abun_dict[key]['abun'] = 1e-15
+
+            else:
+
+                model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (model_abun_dict[key]['abun']*delta_t*pfba_obj_val)
+            
         else:
 
-            test_secrete = model_abun_dict[key]['model'].summary().secretion_flux.loc[model_abun_dict[key]['model'].summary().secretion_flux['reaction'].filter(regex='EX_.*_b$|bio')]
-            test_uptake = model_abun_dict[key]['model'].summary().uptake_flux.loc[model_abun_dict[key]['model'].summary().uptake_flux['reaction'].filter(regex='EX_.*_b$|bio')]
+            sol_fba = model_abun_dict[key]['model'].optimize()
 
-            test_secrete = test_secrete[test_secrete['flux'] !=0 ]
-            test_uptake = test_uptake[test_uptake['flux'] !=0 ]
+            sol_fba_fluxes = sol_fba.fluxes.to_frame().filter(regex='EX_.*_b$|bio', axis = 0)
 
-            temp_uptake = test_uptake['flux'] * delta_t * model_abun_dict[key]['abun']
-            temp_secrete = test_secrete['flux'] * delta_t * model_abun_dict[key]['abun']
+            # secreted should have negative sign to align with normal FBA
+            test_secrete = sol_fba_fluxes[sol_fba_fluxes['fluxes'] > 0]
+            #print('Test_secrete',test_secrete)
+
+            # filter out fluxes that are taken up
+            # uptake should have positive sign to align with normal FBA
+            test_uptake = sol_fba_fluxes[sol_fba_fluxes['fluxes'] < 0]
+
+            temp_uptake = np.abs(test_uptake['fluxes']) * delta_t * model_abun_dict[key]['abun']
+            temp_secrete = -1.0*(test_secrete['fluxes']) * delta_t * model_abun_dict[key]['abun']   
+            #print(temp_secrete)
+            ## basically need to account for case when objective value is zero so need to add if statement to get around if this is the case
+            ### got lines 147-151 from chatgpt
+            filtered = test_secrete.filter(regex='bio', axis=0)
+            if filtered.empty:
+                fba_obj_val = 0
+            else:
+                fba_obj_val = filtered['fluxes'].iloc[0]
+
+            if model_abun_dict[key]['curr_gr_rt'] < 0:
+
+                #print('Model abun before negativity:', model_abun_dict[key]['abun'])
+                logging.info(f"Model abun before negativity where 2: {model_abun_dict[key]['abun']}")
+                model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (model_abun_dict[key]['abun']*delta_t*model_abun_dict[key]['curr_gr_rt'])
+                #model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (model_abun_dict[key]['abun']*model_abun_dict[key]['curr_gr_rt'])
+                #print('Model abun after negativity:', model_abun_dict[key]['abun'])
+                logging.info(f"Model abun after negativity: {model_abun_dict[key]['abun']}")
+
+                ## Basically if ever gets to zero or negative reset to a very small number such that always available to grow 
+
+                if model_abun_dict[key]['abun'] <= 0:
+
+                    model_abun_dict[key]['abun'] = 1e-15
+
+            else:
+
+                model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (model_abun_dict[key]['abun']*delta_t*fba_obj_val)
+            
+
+            ##################################################################################################################################################################################################################################
+            ### object accessing is far too slow ###
+            #test_secrete = model_abun_dict[key]['model'].summary().secretion_flux.loc[model_abun_dict[key]['model'].summary().secretion_flux['reaction'].filter(regex='EX_.*_b$|bio')]
+            #test_uptake = model_abun_dict[key]['model'].summary().uptake_flux.loc[model_abun_dict[key]['model'].summary().uptake_flux['reaction'].filter(regex='EX_.*_b$|bio')]
+
+            #test_secrete = test_secrete[test_secrete['flux'] !=0 ]
+            #test_uptake = test_uptake[test_uptake['flux'] !=0 ]
+
+            #temp_uptake = test_uptake['flux'] * delta_t * model_abun_dict[key]['abun']
+            #temp_secrete = test_secrete['flux'] * delta_t * model_abun_dict[key]['abun']
 
             ### now that we've converted metabolite fluxes using abundance of previous time step, now update bacterial abundance for time t + 1
 
@@ -235,9 +319,10 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
 
 
             #model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + model_abun_dict[key]['model'].summary()._objective_value * delta_t * model_abun_dict[key]['abun']
-            model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + model_abun_dict[key]['model'].summary()._objective_value
+            #model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + model_abun_dict[key]['model'].summary()._objective_value
 
             #print('Obj val', model_abun_dict[key]['model'].summary()._objective_value)
+            ##################################################################################################################################################################################################################################
 
         ### this is wrong for some reason... 
             
@@ -303,6 +388,20 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
             #met_pool_dict = dict((k, v) for k, v in met_pool_dict.items() if v >= 0)
              # Step 1. Change media conditions of models 
             
+            ### Ok here let's determine the metabolites that went negative and then based on previous abundance and difference in pre and post 
+            ### met concentration let's determine a safe maximum threshold to be able to uptake going forward
+
+            ### these are the negative metabolites 
+            neg_met_pool_dict = {k: v for k, v in met_pool_dict.items() if v < 0}
+
+            ### find the difference between previous time point and new time point with negative values 
+            neg_met_pool_diff = {
+                            met: met_pool_dict_pre_t_st.get(met, 0) - neg_met_pool_dict[met]
+                            for met in neg_met_pool_dict}
+            ### now this gives the maximum/upper bound for the metabolites given abundance
+            neg_met_pool_diff_scaled = {met: diff / model_abun_st_t_step for met, diff in neg_met_pool_diff.items()}
+
+            
             ### update met_pool_df
             met_pool_df = pd.DataFrame.from_dict(met_pool_dict_pre_t_st, orient='index',
                         columns=['fluxValue'])
@@ -310,7 +409,7 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
             met_pool_df = met_pool_df.reset_index()
             met_pool_df.columns = ['reaction','fluxValue']
 
-            print('This is met pool from previous time step because went into negatives', met_pool_df)
+            logging.warning(f"This is met pool from previous time step because went into negatives:\n {met_pool_df.to_string()}")
             
 
             ### Need to replace this for Kbase models that aren't translated to vmh ###
@@ -331,8 +430,12 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                     #print('yes - found in diet')
                     # Fix the loc indexing - need to find the row where reaction matches
                     #flux_value = temp_media[rxn.id]
+                    
                     #rxn.lower_bound = -100.0#-1.0*flux_value
-                    rxn.lower_bound = -1.0*met_pool_df[met_pool_df['reaction'] == rxn.id]['fluxValue'].iloc[0]
+                    if rxn.id in list(neg_met_pool_diff_scaled.keys()):
+                        rxn.lower_bound = -1.0*neg_met_pool_diff_scaled[rxn.id]
+                    else:
+                        rxn.lower_bound = -1.0*met_pool_df[met_pool_df['reaction'] == rxn.id]['fluxValue'].iloc[0]
                     #print(f"Setting {rxn.id} lower bound to {rxn.lower_bound}")
                 else:
                     #print(f"Setting {rxn.id} lower bound from {rxn.lower_bound} to 0")
@@ -345,7 +448,9 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                 # optimize model i via pfba 
                 temp_pfba = cobra.flux_analysis.pfba(model_abun_dict[key]['model'])
                 #print('Status of pfba:', temp_pfba.status)
-                print('pfba', temp_pfba)
+                #print('pfba', temp_pfba)
+                logging.info(f'Status of pfba: {temp_pfba.status}')
+                logging.info(f'pfba: {temp_pfba}')
                 biomass_pattern = re.compile(r'(bio)', re.IGNORECASE)
                 biomass_reactions = [rxn for rxn in model_abun_dict[key]['model'].reactions if biomass_pattern.search(rxn.id)]
                 biomass_reactions = str(biomass_reactions[-1]).split(':')[0]
@@ -367,8 +472,8 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                 # uptake should have positive sign to align with normal FBA
                 test_uptake = temp_pfba_df[temp_pfba_df['fluxes'] < 0]
 
-                temp_uptake = np.abs(test_uptake['fluxes']) * delta_t * model_abun_dict[key]['abun']
-                temp_secrete = -1.0*(test_secrete['fluxes']) * delta_t * model_abun_dict[key]['abun']   
+                temp_uptake = np.abs(test_uptake['fluxes']) * delta_t * model_abun_st_t_step
+                temp_secrete = -1.0*(test_secrete['fluxes']) * delta_t * model_abun_st_t_step 
                 #print(temp_secrete)
                 ## basically need to account for case when objective value is zero so need to add if statement to get around if this is the case
                 ### got lines 147-151 from chatgpt
@@ -383,18 +488,23 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                 #    pfba_obj_val = test_secrete.filter(regex='bio', axis=0)['fluxes'].iloc[0]
 
                 if pfba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound:
-                    print('Upper bound not reached:')
-                    print('Upper_bound:',model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound)
-                    print('Obj val', pfba_obj_val)
+                    #print('Upper bound not reached:')
+                    #print('Upper_bound:',model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound)
+                    #print('Obj val', pfba_obj_val)
+                    logging.warning(f'Upper bound not reached:')
+                    logging.warning(f'Upper_bound: {model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound}')
+                    logging.warning(f'Obj val: {pfba_obj_val}')
 
                 ### Adjust abundances such that if negative growth rate abundance does decrease according to negative growth rate of MDSINE, but if positive abun adjusts according to FBA output
 
                 if model_abun_dict[key]['curr_gr_rt'] < 0:
 
-                    print('Model abun before negativity:', model_abun_dict[key]['abun'])
-                    model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (model_abun_dict[key]['abun']*delta_t*model_abun_dict[key]['curr_gr_rt'])
+                    #print('Model abun before negativity:', model_abun_dict[key]['abun'])
+                    logging.info(f"Model abun before negativity where 3: {model_abun_st_t_step}")
+                    model_abun_dict[key]['abun'] = model_abun_st_t_step + (model_abun_st_t_step*delta_t*model_abun_dict[key]['curr_gr_rt'])
                     #model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (model_abun_dict[key]['abun']*model_abun_dict[key]['curr_gr_rt'])
-                    print('Model abun after negativity:', model_abun_dict[key]['abun'])
+                    #print('Model abun after negativity:', model_abun_dict[key]['abun'])
+                    logging.info(f"Model abun after negativity: {model_abun_dict[key]['abun']}")
 
                     ## Basically if ever gets to zero or negative reset to a very small number such that always available to grow 
 
@@ -404,18 +514,65 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
 
                 else:
 
-                    model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (model_abun_dict[key]['abun']*delta_t*pfba_obj_val)
-            
+                    model_abun_dict[key]['abun'] = model_abun_st_t_step + (model_abun_st_t_step*delta_t*pfba_obj_val)
+                
             else:
 
-                test_secrete = model_abun_dict[key]['model'].summary().secretion_flux.loc[model_abun_dict[key]['model'].summary().secretion_flux['reaction'].filter(regex='EX_.*_b$|bio')]
-                test_uptake = model_abun_dict[key]['model'].summary().uptake_flux.loc[model_abun_dict[key]['model'].summary().uptake_flux['reaction'].filter(regex='EX_.*_b$|bio')]
+                sol_fba = model_abun_dict[key]['model'].optimize()
 
-                test_secrete = test_secrete[test_secrete['flux'] !=0 ]
-                test_uptake = test_uptake[test_uptake['flux'] !=0 ]
+                sol_fba_fluxes = sol_fba.fluxes.to_frame().filter(regex='EX_.*_b$|bio', axis = 0)
 
-                temp_uptake = test_uptake['flux'] * delta_t * model_abun_dict[key]['abun']
-                temp_secrete = test_secrete['flux'] * delta_t * model_abun_dict[key]['abun']
+                # secreted should have negative sign to align with normal FBA
+                test_secrete = sol_fba_fluxes[sol_fba_fluxes['fluxes'] > 0]
+                #print('Test_secrete',test_secrete)
+
+                # filter out fluxes that are taken up
+                # uptake should have positive sign to align with normal FBA
+                test_uptake = sol_fba_fluxes[sol_fba_fluxes['fluxes'] < 0]
+
+                temp_uptake = np.abs(test_uptake['fluxes']) * delta_t * model_abun_st_t_step
+                temp_secrete = -1.0*(test_secrete['fluxes']) * delta_t * model_abun_st_t_step   
+                #print(temp_secrete)
+                ## basically need to account for case when objective value is zero so need to add if statement to get around if this is the case
+                ### got lines 147-151 from chatgpt
+                filtered = test_secrete.filter(regex='bio', axis=0)
+                if filtered.empty:
+                    fba_obj_val = 0
+                else:
+                    fba_obj_val = filtered['fluxes'].iloc[0]
+
+                ### Don't want to update abundance until i know it's correct and fluxes don't go negative ###
+                
+                if model_abun_dict[key]['curr_gr_rt'] < 0:
+
+                    #print('Model abun before negativity:', model_abun_dict[key]['abun'])
+                    logging.info(f"Model abun before negativity where 4: {model_abun_st_t_step}")
+                    model_abun_dict[key]['abun'] = model_abun_st_t_step + (model_abun_st_t_step*delta_t*model_abun_dict[key]['curr_gr_rt'])
+                    #model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (model_abun_dict[key]['abun']*model_abun_dict[key]['curr_gr_rt'])
+                    #print('Model abun after negativity:', model_abun_dict[key]['abun'])
+                    logging.info(f"Model abun after negativity: {model_abun_dict[key]['abun']}")
+
+                    ## Basically if ever gets to zero or negative reset to a very small number such that always available to grow 
+
+                    if model_abun_dict[key]['abun'] <= 0:
+
+                        model_abun_dict[key]['abun'] = 1e-15
+
+                else:
+
+                    model_abun_dict[key]['abun'] = model_abun_st_t_step + (model_abun_st_t_step*delta_t*fba_obj_val)
+
+
+                ##################################################################################################################################################################################################################################
+                ### object accessing is far too slow ###
+                #test_secrete = model_abun_dict[key]['model'].summary().secretion_flux.loc[model_abun_dict[key]['model'].summary().secretion_flux['reaction'].filter(regex='EX_.*_b$|bio')]
+                #test_uptake = model_abun_dict[key]['model'].summary().uptake_flux.loc[model_abun_dict[key]['model'].summary().uptake_flux['reaction'].filter(regex='EX_.*_b$|bio')]
+
+                #test_secrete = test_secrete[test_secrete['flux'] !=0 ]
+                #test_uptake = test_uptake[test_uptake['flux'] !=0 ]
+
+                #temp_uptake = test_uptake['flux'] * delta_t * model_abun_dict[key]['abun']
+                #temp_secrete = test_secrete['flux'] * delta_t * model_abun_dict[key]['abun']
 
                 ### now that we've converted metabolite fluxes using abundance of previous time step, now update bacterial abundance for time t + 1
 
@@ -427,9 +584,11 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
 
 
                 #model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + model_abun_dict[key]['model'].summary()._objective_value * delta_t * model_abun_dict[key]['abun']
-                model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + model_abun_dict[key]['model'].summary()._objective_value
+                #model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + model_abun_dict[key]['model'].summary()._objective_value
 
                 #print('Obj val', model_abun_dict[key]['model'].summary()._objective_value)
+                ##################################################################################################################################################################################################################################
+
 
             ### this is wrong for some reason... 
             
@@ -471,6 +630,9 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
 
             met_pool_dict  = update_met_pool(uptake_dict=total_sys_uptake, secrete_dict=total_sys_secretion, met_pool_dict=met_pool_dict)
             #print('this is met pool dict directly after update 2', met_pool_dict)
+
+        ### why is any of this shit here??? ###
+                
         else:
 
             ### have to reset model key for model name
@@ -481,13 +643,15 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
             ###########
 
             ### Adjust abundances such that if negative growth rate abundance does decrease according to negative growth rate of MDSINE, but if positive abun adjusts according to FBA output
-
+            '''
             if model_abun_dict[key]['curr_gr_rt'] < 0:
 
-                print('Model abun before negativity:', model_abun_dict[key]['abun'])
+                #print('Model abun before negativity:', model_abun_dict[key]['abun'])
+                logging.info(f"Model abun before negativity where 1: {model_abun_dict[key]['abun']}")
                 model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (model_abun_dict[key]['abun']*delta_t*model_abun_dict[key]['curr_gr_rt'])
                 #model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (model_abun_dict[key]['abun']*model_abun_dict[key]['curr_gr_rt'])
-                print('Model abun after negativity:', model_abun_dict[key]['abun'])
+                #print('Model abun after negativity:', model_abun_dict[key]['abun'])
+                logging.info(f"Model abun after negativity: {model_abun_dict[key]['abun']}")
                 ## Basically if ever gets to zero or negative reset to a very small number such that always available to grow 
 
                 if model_abun_dict[key]['abun'] <= 0:
@@ -497,12 +661,14 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
             else:
                 if pfba == True:
                 
-                    model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (model_abun_dict[key]['abun']*delta_t*pfba_obj_val)
+                    model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (model_abun_dict[key]['abun']*pfba_obj_val)
+                    #model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (model_abun_dict[key]['abun']*delta_t*pfba_obj_val)
                 
                 else:
-
-                    model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + model_abun_dict[key]['model'].summary()._objective_value * delta_t * model_abun_dict[key]['abun']
-
+                    
+                    model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (model_abun_dict[key]['abun']*delta_t*pfba_obj_val)
+                    #model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + model_abun_dict[key]['model'].summary()._objective_value * delta_t * model_abun_dict[key]['abun']
+            '''
             model_abun_dict[key]['fba_biomass'].append(model_abun_dict[key]['abun'])
             # add uptake_dict at time t to model storage
             model_abun_dict[key]['flux_up'].append(uptake_dict.copy())
@@ -619,7 +785,21 @@ def opt_model(model_abun_dict, pfba):
 
 ### this is the main function that wraps all other helper functions ### 
 
-def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time, num_t_steps, glv_out, glv_params, environ_cond, pfba, MDSINE_rates, Diet, time_points_feed, time_scaler):
+def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time, num_t_steps, glv_out, glv_params, environ_cond, pfba, MDSINE_rates, Diet, time_points_feed, time_scaler, output_file_path):
+
+    ###############################
+    ### Here start logging file ###
+    ###############################
+
+    logger_filename = output_file_path + "/gLV_FBA.log"
+
+    logging.basicConfig(level=logging.INFO, filename=logger_filename,filemode="w",
+                    format="%(asctime)s %(levelname)s %(message)s", force=True)
+    logging.info(f"Log file path: {logger_filename}")
+    #logging.info("An INFO")
+    #logging.warning("A WARNING")
+    #logging.error("An ERROR")
+    #logging.critical("A message of CRITICAL severity")
 
     # implementing a static optimization approach dfba
     # this is a basic approach and will potentially implement more efficient approach later on 
@@ -685,9 +865,12 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
 
     diet_dict = dict(zip(Diet['reaction'], Diet['fluxValue']))
     
-    for i in range(0, num_t_steps):
-        print('Time step: ', i)
-        print('met_pool at beginning of time step', met_pool_df)
+    for i in tqdm(range(0, num_t_steps)):
+        #print('Time step: ', i)
+        logging.info(f"Time step: {i}")
+        #print('met_pool at beginning of time step', met_pool_df)
+        #logger.info(f"DataFrame created:\n{df.to_string()}")
+        logging.info(f"met_pool at beginning of time step:\n {met_pool_df.to_string()}")
         # Step 1a. If this is continously fed, ie dietary conditions then add those at the specified time points 
         '''
         if time_points_feed == None:# or Diet == None:
@@ -727,7 +910,7 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
 
         # Step 3. Run actual FBA/optimization
 
-        opt_model(model_abun_dict=model_abun_dict, pfba=pfba)
+        #opt_model(model_abun_dict=model_abun_dict, pfba=pfba)
 
         # Step 4. Adjust model optimization output fluxes based on abundance and time step size
 
@@ -813,6 +996,7 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
         else:
             met_pool_df['fluxValue'] = .999*met_pool_df['fluxValue']
         '''
+        #met_pool_df['fluxValue'] = .999*met_pool_df['fluxValue']
         met_pool_df['fluxValue'] = (1-(1/384))*met_pool_df['fluxValue']
         #print('Metabolite pool after decay term', met_pool_df)
         met_pool_df = pd.concat([met_pool_df, Diet])
