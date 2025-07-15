@@ -104,8 +104,12 @@ cerillo_test_data.head()
 
 test_df = cerillo_test_data[(cerillo_test_data['Group_together'] == 'PCwEB') | (cerillo_test_data['Group_together'] == 'EBwPC')]
 microbe_data = test_df.pivot(index='Time', columns= 'Group_together', values = 'OD').reset_index()
+<<<<<<< HEAD
+print(microbe_data.head())
+=======
 
 #print(microbe_data.head())
+>>>>>>> hpc_dev
 
 ### Setting up all the data from the 3 different datasets 
 
@@ -205,7 +209,6 @@ if multi_dataset == True:
 
 
     ### Submitting batch jobs to the cluster
-
 
 
     # Job and file paths
@@ -371,6 +374,65 @@ else:
             print(f"Failed to submit job for params {params}: {e}")
 
 
+'''
+
+### Submitting batch jobs to the cluster
 
 
 
+# Job and file paths
+job_name = "glv_dfba_testing"
+base_output_dir = "/home/hayden.gallo-umw/glv_dfba_testing/test_1"
+output_dir = "/home/hayden.gallo-umw/job_output/out_logs"
+error_dir = "/home/hayden.gallo-umw/job_output/error_logs"
+python_script_path = "/home/hayden.gallo-umw/scripts/batch_sims_from_posterior.py.py"
+
+os.makedirs(base_output_dir, exist_ok=True)
+
+# Iterate over seeds and submit jobs
+for i in range(0, len(param_dict)):
+    # build parameter np.array
+    params = np.array([param_dict['r_1']['samples'][i], param_dict['r_2']['samples'][i], param_dict['gamma_1']['samples'][i], param_dict['gamma_2']['samples'][i], param_dict['a_1']['samples'][i], param_dict['a_2']['samples'][i]])    
+    #unique_job_name = f"{job_name}_seed_{seed}"
+    # convert np.array to comma separated list for later parsing
+    params_str = ','.join(map(str, params))
+    # take model_names list and make comma sep list
+    model_names_str = ','.join(model_names)
+    # take init_abun list and make comma sep list
+    init_abun_str = ','.join(init_abun)
+
+    unique_job_name = f"{job_name}_i_"
+    job_save_dir = os.path.join(base_output_dir, unique_job_name)
+    os.makedirs(job_save_dir, exist_ok=True)
+
+    batch_script = f"{base_output_dir}/{unique_job_name}.lsf"
+
+    # Create the batch script content
+    batch_content = f"""#!/bin/bash
+#BSUB -J {unique_job_name}
+#BSUB -o {output_dir}/{unique_job_name}.%J
+#BSUB -e {error_dir}/{unique_job_name}.%J
+#BSUB -q short
+#BSUB -W 4:00
+#BSUB -n 1
+#BSUB -R "span[hosts=1]"
+#BSUB -R "rusage[mem=5GB]"
+
+# Execute the Python script with the seed parameter
+python {python_script_path} --params {params_str}  --model_names {model_names_str} --init_abun {init_abun_str} --job_save_dir {job_save_dir}
+"""
+
+    # Write the batch script to a file
+    with open(batch_script, 'w') as file:
+        file.write(batch_content)
+
+    # Submit the job using 'bsub'
+    try:
+        subprocess.run(["bsub", "<", batch_script], check=True)
+        print(f"Submitted job for params {params}")
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to submit job for params {params}: {e}")
+
+
+
+'''
