@@ -145,7 +145,7 @@ def change_media(model_abun_dict, supplied_media):
 
 ### this is to be run after optimization step 
 
-def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_pt, model_names):
+def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_pt, model_names, flux_sampling):
 
     ### just set delta_t equal to 1 for now 
 
@@ -277,6 +277,33 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                 fba_obj_val = 0
             else:
                 fba_obj_val = filtered['fluxes'].iloc[0]
+            #print(fba_obj_val)
+            if flux_sampling == True and fba_obj_val > 0:
+                #print(fba_obj_val)
+                model_abun_dict[key]['model'].reactions.bio1.lower_bound = 0.95 * fba_obj_val
+
+                model_flux_samp = cobra.sampling.sample(model_abun_dict[key]['model'], 1)
+
+                model_flux_samp = model_flux_samp.T
+
+                model_flux_samp = model_flux_samp.filter(regex = 'EX_.*_b|bio', axis = 0)
+                #model_flux_samp.reset_index(inplace=True)
+
+                model_flux_samp.columns = ['fluxes']
+                
+                test_secrete = model_flux_samp[model_flux_samp['fluxes'] > 0]
+                test_uptake = model_flux_samp[model_flux_samp['fluxes'] < 0]
+
+                temp_uptake = np.abs(test_uptake['fluxes']) * delta_t * model_abun_dict[key]['abun']
+                temp_secrete = -1.0*(test_secrete['fluxes']) * delta_t * model_abun_dict[key]['abun']
+
+                filtered = test_secrete.filter(regex='bio', axis=0)
+                fba_obj_val = filtered['fluxes'].iloc[0]
+
+                ### need to reset the lower bound back to zero afterwards 
+                model_abun_dict[key]['model'].reactions.bio1.lower_bound = 0
+
+
 
             if model_abun_dict[key]['curr_gr_rt'] < 0:
 
@@ -541,6 +568,31 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                 else:
                     fba_obj_val = filtered['fluxes'].iloc[0]
 
+                if flux_sampling == True and fba_obj_val > 0:
+                    #print(fba_obj_val)
+                    model_abun_dict[key]['model'].reactions.bio1.lower_bound = 0.95 * fba_obj_val
+
+                    model_flux_samp = cobra.sampling.sample(model_abun_dict[key]['model'], 1)
+
+                    model_flux_samp = model_flux_samp.T
+
+                    model_flux_samp = model_flux_samp.filter(regex = 'EX_.*_b|bio', axis = 0)
+                    #model_flux_samp.reset_index(inplace=True)
+
+                    model_flux_samp.columns = ['fluxes']
+                    
+                    test_secrete = model_flux_samp[model_flux_samp['fluxes'] > 0]
+                    test_uptake = model_flux_samp[model_flux_samp['fluxes'] < 0]
+
+                    temp_uptake = np.abs(test_uptake['fluxes']) * delta_t * model_abun_dict[key]['abun']
+                    temp_secrete = -1.0*(test_secrete['fluxes']) * delta_t * model_abun_dict[key]['abun']
+
+                    filtered = test_secrete.filter(regex='bio', axis=0)
+                    fba_obj_val = filtered['fluxes'].iloc[0]
+
+                    ### need to reset the lower bound back to zero afterwards 
+                    model_abun_dict[key]['model'].reactions.bio1.lower_bound = 0
+
                 ### Don't want to update abundance until i know it's correct and fluxes don't go negative ###
                 
                 if model_abun_dict[key]['curr_gr_rt'] < 0:
@@ -785,7 +837,7 @@ def opt_model(model_abun_dict, pfba):
 
 ### this is the main function that wraps all other helper functions ### 
 
-def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time, num_t_steps, glv_out, glv_params, environ_cond, pfba, MDSINE_rates, Diet, time_points_feed, time_scaler, output_file_path):
+def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time, num_t_steps, glv_out, glv_params, environ_cond, pfba, MDSINE_rates, Diet, time_points_feed, time_scaler, output_file_path, flux_sampling):
 
     ###############################
     ### Here start logging file ###
@@ -914,7 +966,7 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
 
         # Step 4. Adjust model optimization output fluxes based on abundance and time step size
 
-        total_sys_uptake, total_sys_secretion, met_pool_dict = model_opt_out(model_abun_dict=model_abun_dict, delta_t= (total_sim_time/num_t_steps), pfba=pfba, glv_params=glv_params, t_pt=i, model_names = list_model_names, met_pool_dict=met_pool_dict)
+        total_sys_uptake, total_sys_secretion, met_pool_dict = model_opt_out(model_abun_dict=model_abun_dict, delta_t= (total_sim_time/num_t_steps), pfba=pfba, glv_params=glv_params, t_pt=i, model_names = list_model_names, met_pool_dict=met_pool_dict, flux_sampling=flux_sampling)
 
         #print('this is met pool dict returned after model opt out step', met_pool_dict)
         ### should actually move this update_met_pool function within model_opt_out so as to be done after every optimization of species 
@@ -997,7 +1049,7 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
             met_pool_df['fluxValue'] = .999*met_pool_df['fluxValue']
         '''
         #met_pool_df['fluxValue'] = .999*met_pool_df['fluxValue']
-        met_pool_df['fluxValue'] = (1-(1/384))*met_pool_df['fluxValue']
+        met_pool_df['fluxValue'] = (1-(1/72))*met_pool_df['fluxValue']
         #print('Metabolite pool after decay term', met_pool_df)
         met_pool_df = pd.concat([met_pool_df, Diet])
 
@@ -1008,7 +1060,7 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
         #met_pool_df['fluxValue'] = met_pool_df['fluxValue'].clip(upper=10) 
         met_pool_dict = dict(zip(met_pool_df['reaction'], met_pool_df['fluxValue']))
         met_pool_over_time.append(met_pool_dict.copy())
-        #met_pool_dict['EX_cpd00076_b'] = 2.0
+        #met_pool_dict['EX_cpd00036_b'] = 2.0
 
 
         #print('Updated met_pool', met_pool_df)
