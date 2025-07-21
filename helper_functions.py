@@ -298,7 +298,10 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                 temp_secrete = -1.0*(test_secrete['fluxes']) * delta_t * model_abun_dict[key]['abun']
 
                 filtered = test_secrete.filter(regex='bio', axis=0)
-                fba_obj_val = filtered['fluxes'].iloc[0]
+                if filtered.empty:
+                    fba_obj_val = 0
+                else:
+                    fba_obj_val = filtered['fluxes'].iloc[0]
 
                 ### need to reset the lower bound back to zero afterwards 
                 model_abun_dict[key]['model'].reactions.bio1.lower_bound = 0
@@ -588,7 +591,10 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                     temp_secrete = -1.0*(test_secrete['fluxes']) * delta_t * model_abun_dict[key]['abun']
 
                     filtered = test_secrete.filter(regex='bio', axis=0)
-                    fba_obj_val = filtered['fluxes'].iloc[0]
+                    if filtered.empty:
+                        fba_obj_val = 0
+                    else:
+                        fba_obj_val = filtered['fluxes'].iloc[0]
 
                     ### need to reset the lower bound back to zero afterwards 
                     model_abun_dict[key]['model'].reactions.bio1.lower_bound = 0
@@ -1049,7 +1055,7 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
             met_pool_df['fluxValue'] = .999*met_pool_df['fluxValue']
         '''
         #met_pool_df['fluxValue'] = .999*met_pool_df['fluxValue']
-        met_pool_df['fluxValue'] = (1-(1/72))*met_pool_df['fluxValue']
+        met_pool_df['fluxValue'] = (1-(1/48))*met_pool_df['fluxValue']
         #print('Metabolite pool after decay term', met_pool_df)
         met_pool_df = pd.concat([met_pool_df, Diet])
 
