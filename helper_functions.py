@@ -108,12 +108,13 @@ def change_media(model_abun_dict, supplied_media):
                 #flux_value = temp_media[rxn.id]
                 #rxn.lower_bound = -100.0#-1.0*flux_value
                 rxn.lower_bound = -1.0*supplied_media[supplied_media['reaction'] == rxn.id]['fluxValue'].iloc[0]
+                rxn.upper_bound = 1000
                 #print(f"Setting {rxn.id} lower bound to {rxn.lower_bound}")
             else:
                 #print(f"Setting {rxn.id} lower bound from {rxn.lower_bound} to 0")
                 rxn.lower_bound = 0
                 ### here close the upper bound of the non-existent reactions too 
-                #rxn.upper_bound = 0
+                rxn.upper_bound = 1
 
 
         #logging.info('This is new media conditions for model', model_abun_dict[key]['model'].medium)
@@ -142,6 +143,116 @@ def change_media(model_abun_dict, supplied_media):
         '''        
     return
 
+
+def opt_host_model(host_model, met_pool_df, translation_dict_bigg_to_modelseed, translation_dict_modelseed_to_bigg):
+
+    # ok here need to call host_model and set correct objective
+    host_model.objective = {host_model.reactions.BIOMASS_mm_1_no_glygln: 1}
+
+    ### now take the met_pool_df and translate a copy to bigg for the mouse gem 
+    RC_bigg_mets = []
+
+    for i in range(0, len(met_pool_df)):
+        try:
+            temp = translation_dict_modelseed_to_bigg[met_pool_df['reaction'].iloc[i]]   
+            RC_bigg_mets.append('EX_'+temp+'_e')
+        except KeyError:
+            RC_bigg_mets.append('no_translation')
+            
+
+    met_pool_df_converted = met_pool_df.copy()
+    met_pool_df_converted['reaction'] = RC_bigg_mets
+    met_pool_df_converted[met_pool_df_converted['reaction']!= 'no_translation']
+    met_pool_df_converted
+
+    ### then add 4 needed metabolites for mouse growth 
+    mets_to_add = ['EX_his__L_e', 'EX_trp__L_e', 'EX_lys__L_e', 'EX_o2_e']
+    flux = [1,1,1,1]
+
+    mets_to_add_df = pd.DataFrame(mets_to_add, flux)
+    mets_to_add_df.reset_index(inplace=True)
+    mets_to_add_df.columns = ['fluxValue','reaction']
+    mets_to_add_df
+
+    RC_diet_mouse_additions = pd.concat([met_pool_df_converted, mets_to_add_df])
+    RC_diet_mouse_additions
+    #print(RC_diet_mouse_additions)
+    ### then set media conditions for the mouse model
+
+    ex_b_reactions = [rxn for rxn in host_model.reactions if rxn.id.startswith('EX_') and rxn.id.endswith('_e')]
+
+    #print(f"Found {len(ex_b_reactions)} EX_*_b reactions:")
+
+    # Set all lower bounds to 0, with exceptions from diet data
+    for rxn in ex_b_reactions:
+        if rxn.id in RC_diet_mouse_additions['reaction'].to_list():  # Compare reaction ID, not object
+            #print('yes - found in diet')
+            # Fix the loc indexing - need to find the row where reaction matches
+            #flux_value = temp_media[rxn.id]
+            #rxn.lower_bound = -100.0#-1.0*flux_value
+            rxn.lower_bound = -1.0*RC_diet_mouse_additions[RC_diet_mouse_additions['reaction'] == rxn.id]['fluxValue'].iloc[0]
+            #print(f"Setting {rxn.id} lower bound to {rxn.lower_bound}")
+            rxn.upper_bound = 1000
+        else:
+            #print(f"Setting {rxn.id} lower bound from {rxn.lower_bound} to 0")
+            rxn.lower_bound = 0
+            rxn.upper_bound = 1
+
+    #print(host_model.medium)
+    ### run FBA on mouse model
+    sol = host_model.optimize()
+    #print(host_model.summary())
+
+    sol_fba_fluxes = sol.fluxes.to_frame().filter(regex='EX_', axis = 0)
+    ### now take output from FBA and filter out 4 added metabolites
+    sol_fba_fluxes = sol_fba_fluxes[~sol_fba_fluxes.index.isin(mets_to_add)]
+    sol_fba_fluxes = sol_fba_fluxes.reset_index()
+    sol_fba_fluxes = sol_fba_fluxes[sol_fba_fluxes['fluxes'] !=0.0]
+    
+    sol_fba_fluxes.columns = ['reaction', 'fluxes']
+    #sol_fba_fluxes = sol_fba_fluxes.reset_index(inplace = True)
+    #print(sol_fba_fluxes)
+    ### reconvert output from bigg back to modelseed 
+    kbase_names_for_final_diet = []
+
+    #print(sol_fba_fluxes['reaction'])
+
+    for i in range(0, len(sol_fba_fluxes)):
+        try:
+            #print(sol_fba_fluxes['reaction'].iloc[i])
+            temp = translation_dict_bigg_to_modelseed[sol_fba_fluxes['reaction'].iloc[i].replace('EX_', '').replace('_e', '')]
+            #print(temp)
+            kbase_names_for_final_diet.append('EX_'+temp+'_b')
+        except KeyError:
+        #    print(temp)
+            kbase_names_for_final_diet.append('no_translation') 
+    sol_fba_fluxes['index'] = kbase_names_for_final_diet
+    sol_fba_fluxes[sol_fba_fluxes['index']!='no_translation']
+    # secreted should have negative sign to align with normal FBA
+    test_secrete = sol_fba_fluxes[sol_fba_fluxes['fluxes'] > 0]
+    #print('Test_secrete',test_secrete)
+
+    # filter out fluxes that are taken up
+    # uptake should have positive sign to align with normal FBA
+    test_uptake = sol_fba_fluxes[sol_fba_fluxes['fluxes'] < 0]
+    
+
+    ### convert uptake, secrete, and met_pool_df to dicts 
+    uptake_dict = dict(zip(test_uptake['index'], test_uptake['fluxes']))
+    secrete_dict = dict(zip(test_secrete['index'], test_secrete['fluxes']))
+    met_pool_dict = dict(zip(met_pool_df['reaction'], met_pool_df['fluxValue']))
+
+
+    ### now finally make changes to met_pool_df
+    met_pool_dict = update_met_pool(uptake_dict=uptake_dict, secrete_dict=secrete_dict, met_pool_dict=met_pool_dict)
+
+    met_pool_df = pd.DataFrame.from_dict(met_pool_dict, orient='index',
+                columns=['fluxValue'])
+    met_pool_df['fluxValue'] =  np.double(met_pool_df['fluxValue'])
+    met_pool_df = met_pool_df.reset_index()
+    met_pool_df.columns = ['reaction','fluxValue']
+
+    return met_pool_df
 
 ### this is to be run after optimization step 
 
@@ -421,6 +532,7 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
             ### these are the negative metabolites 
             neg_met_pool_dict = {k: v for k, v in met_pool_dict.items() if v < 0}
 
+            logging.warning(f"These are the negative metabolites:\n {neg_met_pool_dict}")
             ### find the difference between previous time point and new time point with negative values 
             neg_met_pool_diff = {
                             met: met_pool_dict_pre_t_st.get(met, 0) - neg_met_pool_dict[met]
@@ -837,7 +949,7 @@ def opt_model(model_abun_dict, pfba):
 
 ### this is the main function that wraps all other helper functions ### 
 
-def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time, num_t_steps, glv_out, glv_params, environ_cond, pfba, MDSINE_rates, Diet, time_points_feed, time_scaler, output_file_path, flux_sampling):
+def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time, num_t_steps, glv_out, glv_params, environ_cond, pfba, MDSINE_rates, Diet, time_points_feed, time_scaler, output_file_path, flux_sampling, host):
 
     ###############################
     ### Here start logging file ###
@@ -852,6 +964,15 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
     #logging.warning("A WARNING")
     #logging.error("An ERROR")
     #logging.critical("A message of CRITICAL severity")
+    if host != None:
+        logging.info(f"Utilizing host genome scale metabolic model")
+        bigg_to_modelseed = host['bigg_to_modelseed']
+        modelseed_to_bigg = host['modelseed_to_bigg']
+        host_model = host['host_model']
+
+    unique_mets_list = list(np.unique(Diet['reaction'].to_list() + environ_cond['reaction'].to_list()))
+
+
 
     # implementing a static optimization approach dfba
     # this is a basic approach and will potentially implement more efficient approach later on 
@@ -938,9 +1059,13 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
             # Group by reaction and sum
             met_pool_df = met_pool_df.groupby('reaction', as_index=False).sum()
         '''
-
-
-
+        #met_pool_df = met_pool_df[met_pool_df['reaction'].isin(unique_mets_list)]
+        ### here we should incorporate the host GEM
+        if i == 0:
+            continue
+        elif host != None:
+            met_pool_df = opt_host_model(host_model = host_model, translation_dict_bigg_to_modelseed=bigg_to_modelseed, translation_dict_modelseed_to_bigg=modelseed_to_bigg, met_pool_df = met_pool_df)
+        #met_pool_df = met_pool_df[met_pool_df['reaction'].isin(unique_mets_list)]
         # Step 1. Change media conditions of models 
         change_media(model_abun_dict= model_abun_dict, supplied_media= met_pool_df)
 
@@ -1049,13 +1174,14 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
             met_pool_df['fluxValue'] = .999*met_pool_df['fluxValue']
         '''
         #met_pool_df['fluxValue'] = .999*met_pool_df['fluxValue']
-        met_pool_df['fluxValue'] = (1-(1/72))*met_pool_df['fluxValue']
+        met_pool_df['fluxValue'] = (1-(1/48))*met_pool_df['fluxValue']
         #print('Metabolite pool after decay term', met_pool_df)
         met_pool_df = pd.concat([met_pool_df, Diet])
 
         # Group by reaction and sum
         met_pool_df = met_pool_df.groupby('reaction', as_index=False).sum()
 
+        #met_pool_df = met_pool_df[met_pool_df['reaction'].isin(unique_mets_list)]
         ## naive threshold, if anything is greater than 100 set it back to 100
         #met_pool_df['fluxValue'] = met_pool_df['fluxValue'].clip(upper=10) 
         met_pool_dict = dict(zip(met_pool_df['reaction'], met_pool_df['fluxValue']))

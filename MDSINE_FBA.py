@@ -41,6 +41,7 @@ import json
 
 from Bio import Entrez
 import logging
+from scipy.signal import savgol_filter
 
 ### Need to activate cobra_agorra conda environment ###
 
@@ -65,15 +66,15 @@ for key in subject_dict.keys():
     ### subject to predict, subject with metabolomics data
     subject_to_predict = subject_dict[key]#1948#1510#2000
     ### Set test num
-    test_num = 72
+    test_num = 93
     ### set time scaler
-    time_scaler = 192#24
+    time_scaler = 24#192#24
     ### Scaling factor
     scal_fact = 1e10#9.220114e10
     ### Total time steps
-    total_time_steps = 3320
+    total_time_steps = 415
     ### Simulation notes
-    notes = 'full sim with fba and new negativity scheme'
+    notes = 'running full sim with hourly for all 3 subjects with continuous host sampling'
 
 
 
@@ -268,9 +269,9 @@ for key in subject_dict.keys():
     for i in range(0, len(bi_hourly_resolution_latent_traj.columns)-1):
 
         if i == 0:
-            base_array = np.linspace(bi_hourly_resolution_latent_traj.iloc[:,i], bi_hourly_resolution_latent_traj.iloc[:,i+1], 9)
+            base_array = np.linspace(bi_hourly_resolution_latent_traj.iloc[:,i], bi_hourly_resolution_latent_traj.iloc[:,i+1], 2)
         else:
-            temp_array = np.linspace(bi_hourly_resolution_latent_traj.iloc[:,i], bi_hourly_resolution_latent_traj.iloc[:,i+1], 9)[1:,:]
+            temp_array = np.linspace(bi_hourly_resolution_latent_traj.iloc[:,i], bi_hourly_resolution_latent_traj.iloc[:,i+1], 2)[1:,:]
             base_array = np.concatenate((base_array, temp_array))
     
 
@@ -473,11 +474,12 @@ for key in subject_dict.keys():
     metabolomics_data_initial_sub_1948
 
     for i in range(0, len(metabolomics_data_initial_sub_1948)):
-        metabolomics_data_initial_sub_1948.loc[i,'reaction'] = 'EX_' + metabolomics_data_initial_sub_1948['reaction'].iloc[i]  + '_b'
+        metabolomics_data_initial_sub_1948['reaction'].iloc[i] = 'EX_' + metabolomics_data_initial_sub_1948['reaction'].iloc[i]  + '_b'
 
+    #print(rc_diet_MS_convert)
     for i in range(0, len(rc_diet_MS_convert)):
-        rc_diet_MS_convert.loc[i, 'reaction']  = 'EX_' + rc_diet_MS_convert['reaction'].iloc[i]  + '_b'
-
+        rc_diet_MS_convert['reaction'].iloc[i]  = 'EX_' + rc_diet_MS_convert['reaction'].iloc[i]  + '_b'
+    #print(rc_diet_MS_convert)
     diet_scaler = (5/time_scaler)
 
     rc_diet_MS_convert['fluxValue'] = (diet_scaler*rc_diet_MS_convert['fluxValue'])
@@ -492,8 +494,8 @@ for key in subject_dict.keys():
     #### Add necessary extra metabolites for bacterial growth 
 
     mets_to_add = ['EX_cpd00001_b','EX_cpd00009_b','EX_cpd00013_b','EX_cpd00030_b','EX_cpd00034_b','EX_cpd00048_b','EX_cpd00058_b','EX_cpd00063_b','EX_cpd00067_b','EX_cpd00099_b','EX_cpd00149_b','EX_cpd00205_b','EX_cpd00244_b','EX_cpd00254_b','EX_cpd00971_b','EX_cpd10515_b','EX_cpd10516_b','EX_cpd11574_b','EX_cpd00028_b']
-    #flux = [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
-    flux = [10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10]
+    flux = [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+    #flux = [10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10]
 
 
     mets_to_add_df = pd.DataFrame(mets_to_add, flux)
@@ -508,6 +510,15 @@ for key in subject_dict.keys():
 
     RC_diet_adjusted['fluxValue'] = (diet_scaler*RC_diet_adjusted['fluxValue'])
 
+
+    ### Host dictionary with host GEM and bigg to modelseed and modelseed to bigg translation dicts 
+    with open('/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/raw_data/modelseed_to_bigg.json') as f:
+        modelseed_to_bigg = json.load(f)
+
+    mouse_model_bigg = cobra.io.read_sbml_model('/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun/iMM1415.xml')
+
+    host_dict = {'host_model':mouse_model_bigg, 'bigg_to_modelseed':bigg_to_modelseed, 'modelseed_to_bigg': modelseed_to_bigg}
+
     ### Save the results
     output_folder = 'filtering_hourly_resolution'
 
@@ -516,9 +527,8 @@ for key in subject_dict.keys():
     plot_dir = Path(plot_dir_path)
     os.makedirs(plot_dir, exist_ok=True)
 
-
-    met_pool_over_time, model_abun_dict = static_dfba(list_model_names=model_names, list_models=models_list, initial_abundance=init_abun, total_sim_time=total_time_steps, num_t_steps=total_time_steps, glv_out=np.array(abun_hr_df_filt.T), glv_params=None, environ_cond=metabolomics_data_initial_sub_1948, pfba=False, MDSINE_rates=rate_df_filt, Diet=RC_diet_adjusted, time_points_feed = feeding_schedule, time_scaler=time_scaler, output_file_path = plot_dir_path)
-
+    print(rc_diet_MS_convert)
+    met_pool_over_time, model_abun_dict = static_dfba(list_model_names=model_names, list_models=models_list, initial_abundance=init_abun, total_sim_time=415, num_t_steps=total_time_steps, glv_out=np.array(abun_hr_df_filt.T), glv_params=None, environ_cond=metabolomics_data_initial_sub_1948, pfba=False, MDSINE_rates=rate_df_filt, Diet=rc_diet_MS_convert, time_points_feed = feeding_schedule, time_scaler=time_scaler, output_file_path = plot_dir_path, flux_sampling=False, host = host_dict)
 
 
 
@@ -1089,7 +1099,8 @@ for key in subject_dict.keys():
         temp_exp = metabolomics_data_sub_1948.loc[met,:]
             # Scatter plot on the respective subplot
         sns.lineplot(ax=axes[i], 
-                        x=temp_sim.index.to_list(), y=temp_sim.to_list())
+                        x=temp_sim.index.to_list(), y=temp_sim.to_list(), color ='red', lw=2)
+        sns.lineplot(ax = axes[i], x = temp_sim.index.to_list(), y = list(savgol_filter(temp_sim.to_list(),300,3)), color = 'blue', lw = 2)
         sns.scatterplot(ax=axes[i], 
                         x=temp_exp.index.to_list(), y=temp_exp.to_list())
 
