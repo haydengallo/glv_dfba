@@ -79,7 +79,10 @@ print(sim_num)
 test_num = int(np.fromstring(args.test_num, sep = ',')[0])
 print(test_num)
 
-subject_dict = {1953:1948, 1507:1510, 1999:2000}
+#subject_dict = {1953:1948, 1507:1510, 1999:2000}
+#subject_dict = {1953:1948}
+#subject_dict = {1507:1510}
+subject_dict = {1999:2000}
 
 for key in subject_dict.keys():
 
@@ -523,6 +526,26 @@ for key in subject_dict.keys():
 
     np.save(met_save, met_pool_over_time)
     np.save(abun_save, model_abun_dict)
+
+    ### easy collection of output data 
+    plot_dir_path_collected_met = '/home/hayden.gallo-umw/MDSINE_Flux_Sampling/flux_sampling_simulations/Test_' + str(test_num) + '/Subject_' + str(subject_to_plot) + '_met'
+
+    plot_dir_collected_met = Path(plot_dir_path_collected_met)
+    os.makedirs(plot_dir_collected_met, exist_ok=True)
+
+    ### easy collection of output data 
+    plot_dir_path_collected_abun = '/home/hayden.gallo-umw/MDSINE_Flux_Sampling/flux_sampling_simulations/Test_' + str(test_num) + '/Subject_' + str(subject_to_plot) +  '_abun'
+
+    plot_dir_collected_abun = Path(plot_dir_path_collected_abun)
+    os.makedirs(plot_dir_collected_abun, exist_ok=True)
+
+    met_save = plot_dir_path_collected_met + '/sim_' + str(sim_num) + '_met_save.npy'  
+    abun_save = plot_dir_path_collected_abun + '/sim_' + str(sim_num) + '_abun_save.npy'
+
+    np.save(met_save, met_pool_over_time)
+    np.save(abun_save, model_abun_dict)
+
+
 
     #met_pool_over_time = np.load(met_save, allow_pickle=True)
     #model_abun_dict = np.load(abun_save, allow_pickle=True)
