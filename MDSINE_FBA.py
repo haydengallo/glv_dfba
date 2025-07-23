@@ -42,6 +42,8 @@ import json
 from Bio import Entrez
 import logging
 from scipy.signal import savgol_filter
+from scipy.interpolate import interp1d
+from scipy.stats import pearsonr, spearmanr
 
 ### Need to activate cobra_agorra conda environment ###
 
@@ -66,7 +68,7 @@ for key in subject_dict.keys():
     ### subject to predict, subject with metabolomics data
     subject_to_predict = subject_dict[key]#1948#1510#2000
     ### Set test num
-    test_num = 99
+    test_num = 107
     ### set time scaler
     time_scaler = 24#192#24
     ### Scaling factor
@@ -74,7 +76,7 @@ for key in subject_dict.keys():
     ### Total time steps
     total_time_steps = 415
     ### Simulation notes
-    notes = 'running full sim with hourly for all 3 subjects with continuous host sampling'
+    notes = 'testing random constraints in full simulations and testing saving of rmse'
 
 
 
@@ -528,7 +530,12 @@ for key in subject_dict.keys():
     os.makedirs(plot_dir, exist_ok=True)
 
     print(rc_diet_MS_convert)
-    met_pool_over_time, model_abun_dict = static_dfba(list_model_names=model_names, list_models=models_list, initial_abundance=init_abun, total_sim_time=415, num_t_steps=total_time_steps, glv_out=np.array(abun_hr_df_filt.T), glv_params=None, environ_cond=metabolomics_data_initial_sub_1948, pfba=False, MDSINE_rates=rate_df_filt, Diet=rc_diet_MS_convert, time_points_feed = feeding_schedule, time_scaler=time_scaler, output_file_path = plot_dir_path, flux_sampling=False, host = host_dict)
+
+    int_met_values_file_name = '/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun/subject_' + str(subject_to_predict) + '_interpolated_met_data.csv'
+    interpolated_met_values = pd.read_csv(int_met_values_file_name, index_col=0)
+    
+
+    met_pool_over_time, model_abun_dict = static_dfba(list_model_names=model_names, list_models=models_list, initial_abundance=init_abun, total_sim_time=415, num_t_steps=total_time_steps, glv_out=np.array(abun_hr_df_filt.T), glv_params=None, environ_cond=metabolomics_data_initial_sub_1948, pfba=False, MDSINE_rates=rate_df_filt, Diet=rc_diet_MS_convert, time_points_feed = feeding_schedule, time_scaler=time_scaler, output_file_path = plot_dir_path, flux_sampling=False, host = host_dict, random_constraints = interpolated_met_values)
 
 
 
@@ -1124,18 +1131,38 @@ for key in subject_dict.keys():
 
     # Flatten the axes array for easy iteration
     axes = axes.flatten()
-
+    corr_dict = {}
+    rmse_dict = {}
+    total_rmse = 0
     for i,met in enumerate(met_pool_over_time_df_filt.index.tolist()):
         temp_sim = met_pool_over_time_df_filt.loc[met,:]
         temp_exp = metabolomics_data_sub_1948.loc[met,:]
+        temp_int = interpolated_met_values.loc[met,:]
+
+        temp_pearson = pearsonr(temp_sim.to_list(), temp_int.to_list()[:415])
+
+        true = np.array(temp_int.to_list()[:415])
+        pred = np.array(temp_sim.to_list())
+
+        rmse = np.sqrt(np.mean((true - pred)**2))
+        norm = true.max() - true.min()
+        nrmse = rmse/norm
+        if np.isnan(nrmse):
+            nrmse = 0
+        rmse_dict[met] = nrmse
+        total_rmse += nrmse
+
+        temp_pearson_stat_round = np.round(temp_pearson.statistic,4)
+        temp_pearson_p_val_round = np.round(temp_pearson.pvalue,4)
+        corr_dict[met] = temp_pearson_stat_round
             # Scatter plot on the respective subplot
         sns.lineplot(ax=axes[i], 
                         x=temp_sim.index.to_list(), y=temp_sim.to_list(), color ='red', lw=2)
-        sns.lineplot(ax = axes[i], x = temp_sim.index.to_list(), y = list(savgol_filter(temp_sim.to_list(),300,3)), color = 'blue', lw = 2)
+        #sns.lineplot(ax = axes[i], x = temp_sim.index.to_list(), y = list(savgol_filter(temp_sim.to_list(),300,3)), color = 'blue', lw = 2)
         sns.scatterplot(ax=axes[i], 
                         x=temp_exp.index.to_list(), y=temp_exp.to_list())
 
-        axes[i].set_title(f"{met}")
+        axes[i].set_title(f"{met}\n Pearson: {temp_pearson_stat_round}\n Pearson p val: {temp_pearson_p_val_round}")
         axes[i].set_xlabel('Time')
         axes[i].set_ylabel('Conc')
         #axes[i].set_yscale('log')
@@ -1148,6 +1175,10 @@ for key in subject_dict.keys():
 
     plot_file_name = plot_dir_path + '/Subject_' + str(subject_to_plot) + '_mets_exp_vs_sim_individual_scatterplots_' + str(test_num) + '.pdf'
     plt.savefig(plot_file_name, bbox_inches="tight")
+
+    rmse_dict_file_name = plot_dir_path + '/Subject_' + str(subject_to_plot) + '_rmse_dict_' + str(test_num) + '.csv'
+    with open(rmse_dict_file_name, 'w') as file:
+        file.write(json.dumps(rmse_dict))
 
     # %%
     metabolomics_data_sub_1948_melt = metabolomics_data_sub_1948.melt(ignore_index=False).reset_index()
@@ -1221,6 +1252,69 @@ for key in subject_dict.keys():
     plt.suptitle(overall_title, x=0.6, fontsize = 20)
     plt.subplots_adjust(right=0.75)
     plot_file_name = plot_dir_path + '/Subject_' + str(subject_to_plot) + '_mets_scatter_exp_vs_sim_' + str(test_num) + '.pdf'
+    plt.savefig(plot_file_name, bbox_inches="tight")
+    #plt.show()
+    plt.close()
+
+
+    # %%
+    num_plots = 7
+    cols = 4  # Number of columns in the grid
+    rows = (num_plots + cols - 1) // cols  # Calculate number of rows needed
+
+    fig, axes = plt.subplots(rows, cols, figsize=(cols * 6, rows * 5), constrained_layout=False)
+
+    # Flatten the axes array for easy iteration
+    axes = axes.flatten()
+
+    for i,time in enumerate(merged_exp_sim_met_data['time'].unique().tolist()):
+        temp = merged_exp_sim_met_data[merged_exp_sim_met_data['time'] == time]
+        
+            # Scatter plot on the respective subplot
+        sns.scatterplot(ax=axes[i], data=temp, 
+                        x=temp['exp_conc'], y=temp['sim_conc'], hue='metabolites', palette=color_map)
+
+        sns.lineplot(ax=axes[i], x=x, y = y)
+        temp_pearson = pearsonr(np.log1p(temp['exp_conc']), np.log1p(temp['sim_conc']), alternative='greater')
+        #print(temp_pearson.statistic)
+        temp_corr = np.corrcoef(temp['exp_conc'], temp['sim_conc'])
+        #print(temp_corr)
+        temp_corr_log = np.corrcoef(np.log1p(temp['exp_conc']), np.log1p(temp['sim_conc']))
+        #print(temp_corr_log)
+        temp_spearman = spearmanr(np.log1p(temp['exp_conc']), np.log1p(temp['sim_conc']), alternative='greater')
+        temp_spearman_stat_round = np.round(temp_spearman.statistic,4)
+        temp_spearman_p_val_round = np.round(temp_spearman.pvalue,4)
+        temp_pearson_stat_round = np.round(temp_pearson.statistic,4)
+        temp_pearson_val_round = np.round(temp_pearson.pvalue,4)
+        #axes[i].set_xlim(0,25)
+        axes[i].set_ylim(10e-3,10e3)
+        axes[i].set_xscale('log')
+        axes[i].set_yscale('log')
+        axes[i].set_title(f"Day {time}\n Spearman: {temp_spearman_stat_round}, Spearman_p_val: {temp_spearman_p_val_round}\n Pearson: {temp_pearson_stat_round}, Pearson_p_val: {temp_pearson_val_round}")
+        axes[i].set_xlabel('Exp Conc')
+        axes[i].set_ylabel('Sim Conc')
+        axes[i].legend_.remove()
+
+    # Hide any empty subplots if the number of plots is not a perfect square
+    for j in range(num_plots, len(axes)):
+        fig.delaxes(axes[j])
+
+    # Add custom legend to the *figure* (not either axis), outside plot
+    fig.legend(
+        handles=legend_elements,
+        title='Metabolite',
+        loc='center left',
+        bbox_to_anchor=(.8, 0.5),  # Push legend just outside right edge
+        borderaxespad=0,
+        frameon=False,
+        ncol=1
+    )
+    # Adjust spacing to make room for the legend
+    plt.subplots_adjust(hspace=.4, right=1)  # Shrink plot width
+    overall_title = 'Subject ' + str(subject_to_plot)
+    plt.suptitle(overall_title, x=0.5, fontsize = 24)
+    plt.subplots_adjust(right=0.75)
+    plot_file_name = plot_dir_path + '/Subject_' + str(subject_to_plot) + '_mets_scatter_exp_vs_sim_log_scale_' + str(test_num) + '.pdf'
     plt.savefig(plot_file_name, bbox_inches="tight")
     #plt.show()
     plt.close()

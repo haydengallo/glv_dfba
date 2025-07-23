@@ -1064,12 +1064,23 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
             # Group by reaction and sum
             met_pool_df = met_pool_df.groupby('reaction', as_index=False).sum()
         '''
+        ### this line is for only keeping metabolites of interest in met pool
         met_pool_df = met_pool_df[met_pool_df['reaction'].isin(unique_mets_list)]
         ### here we should incorporate the host GEM
         if i == 0:
             continue
         elif host != None:
             met_pool_df = opt_host_model(host_model = host_model, translation_dict_bigg_to_modelseed=bigg_to_modelseed, translation_dict_modelseed_to_bigg=modelseed_to_bigg, met_pool_df = met_pool_df)
+            if constrain_mets == True:
+            #print(random_constraints_filt)
+                for met in range(0, len(random_constraints_filt)):
+                    met_to_grab = random_constraints_filt.index.to_list()[met]
+                    #print(met_to_grab)
+                    temp = random_constraints_filt.loc[met_to_grab,:][i]
+                    #print(temp)
+                    #met_pool_df[met_pool_df['reaction'] == met]['fluxValue'].iloc[0] = temp
+                    met_pool_df.loc[met_pool_df['reaction'] == met_to_grab, 'fluxValue'] = temp
+        ### this line is for only keeping metabolites of interest in met pool
         met_pool_df = met_pool_df[met_pool_df['reaction'].isin(unique_mets_list)]
         # Step 1. Change media conditions of models 
         change_media(model_abun_dict= model_abun_dict, supplied_media= met_pool_df)
@@ -1185,7 +1196,7 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
 
         # Group by reaction and sum
         met_pool_df = met_pool_df.groupby('reaction', as_index=False).sum()
-
+        ### this line is for only keeping metabolites of interest in met pool
         met_pool_df = met_pool_df[met_pool_df['reaction'].isin(unique_mets_list)]
         if constrain_mets == True and i != 0:
             #print(random_constraints_filt)
