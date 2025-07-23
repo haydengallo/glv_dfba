@@ -949,7 +949,7 @@ def opt_model(model_abun_dict, pfba):
 
 ### this is the main function that wraps all other helper functions ### 
 
-def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time, num_t_steps, glv_out, glv_params, environ_cond, pfba, MDSINE_rates, Diet, time_points_feed, time_scaler, output_file_path, flux_sampling, host):
+def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time, num_t_steps, glv_out, glv_params, environ_cond, pfba, MDSINE_rates, Diet, time_points_feed, time_scaler, output_file_path, flux_sampling, host, random_constraints):
 
     ###############################
     ### Here start logging file ###
@@ -972,6 +972,11 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
 
     unique_mets_list = list(np.unique(Diet['reaction'].to_list() + environ_cond['reaction'].to_list()))
 
+    if isinstance(random_constraints,pd.DataFrame):
+        constrain_mets = True
+        random_mets = np.random.choice(60,np.random.randint(1,11,1)[0])
+        random_constraints_filt = random_constraints.iloc[list(random_mets),:]
+        logging.info(f"These are the random metabolite constraints for this simulation: {list(random_constraints_filt.index)}")
 
 
     # implementing a static optimization approach dfba
@@ -1059,13 +1064,13 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
             # Group by reaction and sum
             met_pool_df = met_pool_df.groupby('reaction', as_index=False).sum()
         '''
-        #met_pool_df = met_pool_df[met_pool_df['reaction'].isin(unique_mets_list)]
+        met_pool_df = met_pool_df[met_pool_df['reaction'].isin(unique_mets_list)]
         ### here we should incorporate the host GEM
         if i == 0:
             continue
         elif host != None:
             met_pool_df = opt_host_model(host_model = host_model, translation_dict_bigg_to_modelseed=bigg_to_modelseed, translation_dict_modelseed_to_bigg=modelseed_to_bigg, met_pool_df = met_pool_df)
-        #met_pool_df = met_pool_df[met_pool_df['reaction'].isin(unique_mets_list)]
+        met_pool_df = met_pool_df[met_pool_df['reaction'].isin(unique_mets_list)]
         # Step 1. Change media conditions of models 
         change_media(model_abun_dict= model_abun_dict, supplied_media= met_pool_df)
 
@@ -1173,15 +1178,29 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
         else:
             met_pool_df['fluxValue'] = .999*met_pool_df['fluxValue']
         '''
-        #met_pool_df['fluxValue'] = .999*met_pool_df['fluxValue']
-        met_pool_df['fluxValue'] = (1-(1/48))*met_pool_df['fluxValue']
+        #met_pool_df['fluxValue'] = .95*met_pool_df['fluxValue']
+        met_pool_df['fluxValue'] = (1-(1/72))*met_pool_df['fluxValue']
         #print('Metabolite pool after decay term', met_pool_df)
         met_pool_df = pd.concat([met_pool_df, Diet])
 
         # Group by reaction and sum
         met_pool_df = met_pool_df.groupby('reaction', as_index=False).sum()
 
-        #met_pool_df = met_pool_df[met_pool_df['reaction'].isin(unique_mets_list)]
+        met_pool_df = met_pool_df[met_pool_df['reaction'].isin(unique_mets_list)]
+        if constrain_mets == True and i != 0:
+            #print(random_constraints_filt)
+            for met in range(0, len(random_constraints_filt)):
+                met_to_grab = random_constraints_filt.index.to_list()[met]
+                #print(met_to_grab)
+                temp = random_constraints_filt.loc[met_to_grab,:][i]
+                #print(temp)
+                #met_pool_df[met_pool_df['reaction'] == met]['fluxValue'].iloc[0] = temp
+                met_pool_df.loc[met_pool_df['reaction'] == met_to_grab, 'fluxValue'] = temp
+                #print(temp)
+                #print(met_pool_df[met_pool_df['reaction'] == met_to_grab])
+                #print(met_pool_df.loc[met_pool_df['reaction'] == met, 'fluxValue'])
+        #supplied_media[supplied_media['reaction'] == rxn.id]['fluxValue'].iloc[0]
+
         ## naive threshold, if anything is greater than 100 set it back to 100
         #met_pool_df['fluxValue'] = met_pool_df['fluxValue'].clip(upper=10) 
         met_pool_dict = dict(zip(met_pool_df['reaction'], met_pool_df['fluxValue']))

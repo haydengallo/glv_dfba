@@ -66,7 +66,7 @@ for key in subject_dict.keys():
     ### subject to predict, subject with metabolomics data
     subject_to_predict = subject_dict[key]#1948#1510#2000
     ### Set test num
-    test_num = 93
+    test_num = 99
     ### set time scaler
     time_scaler = 24#192#24
     ### Scaling factor
@@ -1083,6 +1083,37 @@ for key in subject_dict.keys():
     #change_met_ids = bigg_to_agora_exchange_ids(metabolomics_data_sub_1948.index.tolist())
     metabolomics_data_sub_1948.index = change_met_ids
     metabolomics_data_sub_1948.head()
+
+    ### interpolate data here and save for constraint stuff
+    '''
+    from scipy.interpolate import interp1d
+
+    # Original experimental time points
+    orig_time = np.array([-3, 0, 3, 5, 7, 11, 14])
+
+    # Example: load your pasted data into a DataFrame
+    # Replace this with loading your real data if you have it in a file
+    # The first column should be metabolite IDs, the rest are values
+    #df = pd.read_csv('your_data.csv', sep='\t', index_col=0)  # Replace with actual path
+
+    # New time grid: 415 points evenly spaced between -3 and 14
+    interp_time = np.linspace(-3, 14, 416)
+
+    # Create empty DataFrame to hold interpolated values
+    interpolated_df = pd.DataFrame(index=metabolomics_data_sub_1948.index, columns=interp_time)
+
+    # Perform linear interpolation row by row
+    for met_id, row in metabolomics_data_sub_1948.iterrows():
+        f_interp = interp1d(orig_time, row.values, kind='linear', fill_value="extrapolate")
+        interpolated_df.loc[met_id] = f_interp(interp_time)
+
+    # Optional: ensure all values are floats
+    interpolated_df = interpolated_df.astype(float)
+    interpolated_df
+
+    int_met_values_file_name = '/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun/subject_' + str(subject_to_predict) + '_interpolated_met_data.csv'
+    interpolated_df.to_csv(int_met_values_file_name, sep=',',index=True)
+    '''
 
     # %%
     num_plots = 60
