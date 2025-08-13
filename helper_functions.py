@@ -107,14 +107,20 @@ def change_media(model_abun_dict, supplied_media):
                 # Fix the loc indexing - need to find the row where reaction matches
                 #flux_value = temp_media[rxn.id]
                 #rxn.lower_bound = -100.0#-1.0*flux_value
-                rxn.lower_bound = -1.0*supplied_media[supplied_media['reaction'] == rxn.id]['fluxValue'].iloc[0]
+                #print(rxn.id)
+                temp_value = supplied_media[supplied_media['reaction'] == rxn.id]['fluxValue'].iloc[0]
+                if np.isnan(temp_value):
+                    temp_value = 0
+                #print(rxn.id)
+                #print(temp_value)
+                rxn.lower_bound = -1.0*temp_value
                 rxn.upper_bound = 1000
                 #print(f"Setting {rxn.id} lower bound to {rxn.lower_bound}")
             else:
                 #print(f"Setting {rxn.id} lower bound from {rxn.lower_bound} to 0")
                 rxn.lower_bound = 0
                 ### here close the upper bound of the non-existent reactions too 
-                rxn.upper_bound = 1
+                #rxn.upper_bound = 1
 
 
         #logging.info('This is new media conditions for model', model_abun_dict[key]['model'].medium)
@@ -196,7 +202,7 @@ def opt_host_model(host_model, met_pool_df, translation_dict_bigg_to_modelseed, 
         else:
             #print(f"Setting {rxn.id} lower bound from {rxn.lower_bound} to 0")
             rxn.lower_bound = 0
-            rxn.upper_bound = 1
+            #rxn.upper_bound = 1
 
     #print(host_model.medium)
     ### run FBA on mouse model
@@ -977,7 +983,8 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
         random_mets = np.random.choice(60,np.random.randint(1,11,1)[0])
         random_constraints_filt = random_constraints.iloc[list(random_mets),:]
         logging.info(f"These are the random metabolite constraints for this simulation: {list(random_constraints_filt.index)}")
-
+    else:
+        constrain_mets = 'No'
 
     # implementing a static optimization approach dfba
     # this is a basic approach and will potentially implement more efficient approach later on 
@@ -1065,7 +1072,7 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
             met_pool_df = met_pool_df.groupby('reaction', as_index=False).sum()
         '''
         ### this line is for only keeping metabolites of interest in met pool
-        met_pool_df = met_pool_df[met_pool_df['reaction'].isin(unique_mets_list)]
+        #met_pool_df = met_pool_df[met_pool_df['reaction'].isin(unique_mets_list)]
         ### here we should incorporate the host GEM
         if i == 0:
             continue
@@ -1076,12 +1083,12 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
                 for met in range(0, len(random_constraints_filt)):
                     met_to_grab = random_constraints_filt.index.to_list()[met]
                     #print(met_to_grab)
-                    temp = random_constraints_filt.loc[met_to_grab,:][i]
+                    temp = random_constraints_filt.loc[met_to_grab,:].iloc[i]
                     #print(temp)
                     #met_pool_df[met_pool_df['reaction'] == met]['fluxValue'].iloc[0] = temp
                     met_pool_df.loc[met_pool_df['reaction'] == met_to_grab, 'fluxValue'] = temp
         ### this line is for only keeping metabolites of interest in met pool
-        met_pool_df = met_pool_df[met_pool_df['reaction'].isin(unique_mets_list)]
+        #met_pool_df = met_pool_df[met_pool_df['reaction'].isin(unique_mets_list)]
         # Step 1. Change media conditions of models 
         change_media(model_abun_dict= model_abun_dict, supplied_media= met_pool_df)
 
@@ -1197,7 +1204,7 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
         # Group by reaction and sum
         met_pool_df = met_pool_df.groupby('reaction', as_index=False).sum()
         ### this line is for only keeping metabolites of interest in met pool
-        met_pool_df = met_pool_df[met_pool_df['reaction'].isin(unique_mets_list)]
+        #met_pool_df = met_pool_df[met_pool_df['reaction'].isin(unique_mets_list)]
         if constrain_mets == True and i != 0:
             #print(random_constraints_filt)
             for met in range(0, len(random_constraints_filt)):
@@ -1223,8 +1230,12 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
 
         ### Think i needed to overwrite environ_cond met_pool_dict
 
+    if constrain_mets == True:
+        mets_used_for_constraint = list(random_constraints_filt.index)
+    else:
+        mets_used_for_constraint = 0
     
-    return met_pool_over_time, model_abun_dict
+    return met_pool_over_time, model_abun_dict, mets_used_for_constraint
 
 ######################
 ### Loss Functions ###

@@ -68,7 +68,7 @@ for key in subject_dict.keys():
     ### subject to predict, subject with metabolomics data
     subject_to_predict = subject_dict[key]#1948#1510#2000
     ### Set test num
-    test_num = 107
+    test_num = 108
     ### set time scaler
     time_scaler = 24#192#24
     ### Scaling factor
@@ -76,7 +76,7 @@ for key in subject_dict.keys():
     ### Total time steps
     total_time_steps = 415
     ### Simulation notes
-    notes = 'testing random constraints in full simulations and testing saving of rmse'
+    notes = 'full simulations, no constraints, only allow uptake of mets of interest'
 
 
 
@@ -535,7 +535,7 @@ for key in subject_dict.keys():
     interpolated_met_values = pd.read_csv(int_met_values_file_name, index_col=0)
     
 
-    met_pool_over_time, model_abun_dict = static_dfba(list_model_names=model_names, list_models=models_list, initial_abundance=init_abun, total_sim_time=415, num_t_steps=total_time_steps, glv_out=np.array(abun_hr_df_filt.T), glv_params=None, environ_cond=metabolomics_data_initial_sub_1948, pfba=False, MDSINE_rates=rate_df_filt, Diet=rc_diet_MS_convert, time_points_feed = feeding_schedule, time_scaler=time_scaler, output_file_path = plot_dir_path, flux_sampling=False, host = host_dict, random_constraints = interpolated_met_values)
+    met_pool_over_time, model_abun_dict = static_dfba(list_model_names=model_names, list_models=models_list, initial_abundance=init_abun, total_sim_time=415, num_t_steps=total_time_steps, glv_out=np.array(abun_hr_df_filt.T), glv_params=None, environ_cond=metabolomics_data_initial_sub_1948, pfba=False, MDSINE_rates=rate_df_filt, Diet=rc_diet_MS_convert, time_points_feed = feeding_schedule, time_scaler=time_scaler, output_file_path = plot_dir_path, flux_sampling=False, host = host_dict, random_constraints = 'No')#interpolated_met_values)
 
 
 
@@ -1161,6 +1161,7 @@ for key in subject_dict.keys():
         #sns.lineplot(ax = axes[i], x = temp_sim.index.to_list(), y = list(savgol_filter(temp_sim.to_list(),300,3)), color = 'blue', lw = 2)
         sns.scatterplot(ax=axes[i], 
                         x=temp_exp.index.to_list(), y=temp_exp.to_list())
+        sns.lineplot(ax=axes[i], x=temp_exp.index.to_list(), y=temp_exp.to_list())
 
         axes[i].set_title(f"{met}\n Pearson: {temp_pearson_stat_round}\n Pearson p val: {temp_pearson_p_val_round}")
         axes[i].set_xlabel('Time')
