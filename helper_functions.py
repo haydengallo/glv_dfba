@@ -84,43 +84,50 @@ def make_media(model, media):
     return media_dict
 
 
-def change_media(model_abun_dict, supplied_media):
+def change_media(model_abun_dict, supplied_media, AGORA_models):
+
+    mets_to_filter = ['EX_but(e)', 'EX_succ(e)']
+    supplied_media_copy = supplied_media.copy()
+    supplied_media_copy = supplied_media_copy[~supplied_media_copy['reaction'].isin(mets_to_filter)]
+
 
     for key in model_abun_dict:
         
-        #temp_media = make_media(model_abun_dict[key]['model'], media=supplied_media)
-        #print('This is temp_media', temp_media)
-        # set media conditions to be the temp_media
-        #print('this is temp_media', temp_media)
-        #model_abun_dict[key]['model'].medium = temp_media
+        if AGORA_models == 'yes':
+            temp_media = make_media(model_abun_dict[key]['model'], media=supplied_media_copy)
+            #print('This is temp_media', temp_media)
+            # set media conditions to be the temp_media
+            #print('this is temp_media', temp_media)
+            model_abun_dict[key]['model'].medium = temp_media
 
-        ### Manual setting of conditions 
-        # Find all exchange reactions ending with "_b"
-        ex_b_reactions = [rxn for rxn in model_abun_dict[key]['model'].reactions if rxn.id.startswith('EX_') and rxn.id.endswith('_b')]
+        else:
+            ### Manual setting of conditions 
+            # Find all exchange reactions ending with "_b"
+            ex_b_reactions = [rxn for rxn in model_abun_dict[key]['model'].reactions if rxn.id.startswith('EX_') and rxn.id.endswith('_b')]
 
-        #print(f"Found {len(ex_b_reactions)} EX_*_b reactions:")
+            #print(f"Found {len(ex_b_reactions)} EX_*_b reactions:")
 
-        # Set all lower bounds to 0, with exceptions from diet data
-        for rxn in ex_b_reactions:
-            if rxn.id in supplied_media['reaction'].to_list():  # Compare reaction ID, not object
-                #print('yes - found in diet')
-                # Fix the loc indexing - need to find the row where reaction matches
-                #flux_value = temp_media[rxn.id]
-                #rxn.lower_bound = -100.0#-1.0*flux_value
-                #print(rxn.id)
-                temp_value = supplied_media[supplied_media['reaction'] == rxn.id]['fluxValue'].iloc[0]
-                if np.isnan(temp_value):
-                    temp_value = 0
-                #print(rxn.id)
-                #print(temp_value)
-                rxn.lower_bound = -1.0*temp_value
-                rxn.upper_bound = 1000
-                #print(f"Setting {rxn.id} lower bound to {rxn.lower_bound}")
-            else:
-                #print(f"Setting {rxn.id} lower bound from {rxn.lower_bound} to 0")
-                rxn.lower_bound = 0
-                ### here close the upper bound of the non-existent reactions too 
-                #rxn.upper_bound = 1
+            # Set all lower bounds to 0, with exceptions from diet data
+            for rxn in ex_b_reactions:
+                if rxn.id in supplied_media['reaction'].to_list():  # Compare reaction ID, not object
+                    #print('yes - found in diet')
+                    # Fix the loc indexing - need to find the row where reaction matches
+                    #flux_value = temp_media[rxn.id]
+                    #rxn.lower_bound = -100.0#-1.0*flux_value
+                    #print(rxn.id)
+                    temp_value = supplied_media[supplied_media['reaction'] == rxn.id]['fluxValue'].iloc[0]
+                    if np.isnan(temp_value):
+                        temp_value = 0
+                    #print(rxn.id)
+                    #print(temp_value)
+                    rxn.lower_bound = -1.0*temp_value
+                    rxn.upper_bound = 1000
+                    #print(f"Setting {rxn.id} lower bound to {rxn.lower_bound}")
+                else:
+                    #print(f"Setting {rxn.id} lower bound from {rxn.lower_bound} to 0")
+                    rxn.lower_bound = 0
+                    ### here close the upper bound of the non-existent reactions too 
+                    #rxn.upper_bound = 1
 
 
         #logging.info('This is new media conditions for model', model_abun_dict[key]['model'].medium)
@@ -154,13 +161,23 @@ def opt_host_model(host_model, met_pool_df, translation_dict_bigg_to_modelseed, 
 
     # ok here need to call host_model and set correct objective
     host_model.objective = {host_model.reactions.BIOMASS_mm_1_no_glygln: 1}
+    host_model.reactions.BIOMASS_mm_1_no_glygln.upper_bound = 0.0
+
 
     ### now take the met_pool_df and translate a copy to bigg for the mouse gem 
     RC_bigg_mets = []
 
+    met_pool_df = met_pool_df[met_pool_df['reaction']!= 'bio1']
+
     for i in range(0, len(met_pool_df)):
         try:
-            temp = translation_dict_modelseed_to_bigg[met_pool_df['reaction'].iloc[i]]   
+            ################################################################################################
+            ### I need to add this cuz i kind of fucked up the host implementation it seems... fuckkkkkk ###
+            ################################################################################################
+         
+            temp = met_pool_df['reaction'].iloc[i].split('_')[1]
+
+            temp = translation_dict_modelseed_to_bigg[temp]   
             RC_bigg_mets.append('EX_'+temp+'_e')
         except KeyError:
             RC_bigg_mets.append('no_translation')
@@ -171,9 +188,23 @@ def opt_host_model(host_model, met_pool_df, translation_dict_bigg_to_modelseed, 
     met_pool_df_converted[met_pool_df_converted['reaction']!= 'no_translation']
     met_pool_df_converted
 
+
+    ##################################
+    ### Use these mets for RC diet ###
+    ##################################
     ### then add 4 needed metabolites for mouse growth 
-    mets_to_add = ['EX_his__L_e', 'EX_trp__L_e', 'EX_lys__L_e', 'EX_o2_e']
-    flux = [1,1,1,1]
+    #mets_to_add = ['EX_his__L_e', 'EX_trp__L_e', 'EX_lys__L_e', 'EX_o2_e']
+    #flux = [1,1,1,1]
+
+
+    ##################################
+    ### Use these mets for WD diet ###
+    ##################################
+
+    
+    mets_to_add = ['EX_his__L_e', 'EX_trp__L_e', 'EX_lys__L_e', 'EX_o2_e', 'EX_10fthf7glu_e', 'EX_phe__L_e', 'EX_ile__L_e', 'EX_leu__L_e', 'EX_tyr__L_e', 'EX_val__L_e']
+    flux = [1,1,1,1,1,1,1,1,1,1]
+
 
     mets_to_add_df = pd.DataFrame(mets_to_add, flux)
     mets_to_add_df.reset_index(inplace=True)
@@ -182,7 +213,7 @@ def opt_host_model(host_model, met_pool_df, translation_dict_bigg_to_modelseed, 
 
     RC_diet_mouse_additions = pd.concat([met_pool_df_converted, mets_to_add_df])
     RC_diet_mouse_additions
-    #print(RC_diet_mouse_additions)
+    logging.info(RC_diet_mouse_additions)
     ### then set media conditions for the mouse model
 
     ex_b_reactions = [rxn for rxn in host_model.reactions if rxn.id.startswith('EX_') and rxn.id.endswith('_e')]
@@ -204,9 +235,20 @@ def opt_host_model(host_model, met_pool_df, translation_dict_bigg_to_modelseed, 
             rxn.lower_bound = 0
             #rxn.upper_bound = 1
 
+    host_model.reactions.EX_phe__L_e.lower_bound = -1.
+    host_model.reactions.EX_his__L_e.lower_bound = -1.0
+    host_model.reactions.EX_trp__L_e.lower_bound = -1.0
+    host_model.reactions.EX_ile__L_e.lower_bound = -1.0
+    host_model.reactions.EX_leu__L_e.lower_bound = -1.0
+    host_model.reactions.EX_lys__L_e.lower_bound = -1.0
+    host_model.reactions.EX_tyr__L_e.lower_bound = -1.0
+    host_model.reactions.EX_val__L_e.lower_bound = -1.0
+
+
     #print(host_model.medium)
     ### run FBA on mouse model
     sol = host_model.optimize()
+    logging.info(f"this is mouse solution to fba: {sol}")
     #print(host_model.summary())
 
     sol_fba_fluxes = sol.fluxes.to_frame().filter(regex='EX_', axis = 0)
@@ -257,6 +299,9 @@ def opt_host_model(host_model, met_pool_df, translation_dict_bigg_to_modelseed, 
     met_pool_df['fluxValue'] =  np.double(met_pool_df['fluxValue'])
     met_pool_df = met_pool_df.reset_index()
     met_pool_df.columns = ['reaction','fluxValue']
+
+
+    logging.info(f"This is the met pool after Mouse GEM: {met_pool_df.to_string()}")
 
     return met_pool_df
 
@@ -312,7 +357,8 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
             # put fluxes in df for manipulation
 
             ### switch out regex string with 'EX_' if using AGORA models###
-            temp_pfba_df = temp_pfba.to_frame().filter(regex='EX_.*_b$|bio', axis = 0)
+            #temp_pfba_df = temp_pfba.to_frame().filter(regex='EX_.*_b$|bio', axis = 0)
+            temp_pfba_df = temp_pfba.to_frame().filter(regex='EX_|bio', axis = 0)
             
             # filter out fluxes that are secreted
             # signs are flipped here compared to standard fba optimization in cobrapy so must change them
@@ -374,7 +420,11 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
 
             sol_fba = model_abun_dict[key]['model'].optimize()
 
-            sol_fba_fluxes = sol_fba.fluxes.to_frame().filter(regex='EX_.*_b$|bio', axis = 0)
+            #logging.info(f'Status of pfba: {temp_pfba.status}')
+            #logging.info(f'fba: {sol_fba}')
+
+            #sol_fba_fluxes = sol_fba.fluxes.to_frame().filter(regex='EX_.*_b$|bio', axis = 0)
+            sol_fba_fluxes = sol_fba.fluxes.to_frame().filter(regex='EX_|bio', axis = 0)
 
             # secreted should have negative sign to align with normal FBA
             test_secrete = sol_fba_fluxes[sol_fba_fluxes['fluxes'] > 0]
@@ -392,8 +442,25 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
             filtered = test_secrete.filter(regex='bio', axis=0)
             if filtered.empty:
                 fba_obj_val = 0
+                
             else:
                 fba_obj_val = filtered['fluxes'].iloc[0]
+
+            logging.info(f'fba obj val: {fba_obj_val}')
+
+            ### use next line if using AGORA models
+            if fba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound:
+            ### use next line if using Kbase models
+            #if fba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = 'bio1').upper_bound:
+                #print('Upper bound not reached:')
+                #print('Upper_bound:',model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound)
+                #print('Obj val', pfba_obj_val)
+                logging.warning(f'Upper bound not reached:')
+                #logging.warning(f'Upper_bound: {model_abun_dict[key]['model'].reactions.get_by_id(id = 'bio1').upper_bound}')
+                logging.warning(f'Upper_bound: {model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound}')
+                logging.warning(f'Obj val: {fba_obj_val}')
+
+
             #print(fba_obj_val)
             if flux_sampling == True and fba_obj_val > 0:
                 #print(fba_obj_val)
@@ -438,9 +505,9 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                     model_abun_dict[key]['abun'] = 1e-15
 
             else:
-
+                logging.info(f"Model abun before growth: {model_abun_dict[key]['abun']}")
                 model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (model_abun_dict[key]['abun']*delta_t*fba_obj_val)
-            
+                logging.info(f"Model abun after growth: {model_abun_dict[key]['abun']}")
 
             ##################################################################################################################################################################################################################################
             ### object accessing is far too slow ###
@@ -521,7 +588,12 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
         #print('this is met pool dict directly after update 1', met_pool_dict)
         ### basically here go if there are any negative values for this met_pool_dict, need to utilize the met_pool_dict_pre_t_st
         ### and reoptimize however many number of GEMs haven't been through secretion and uptake procedures,
+        count = 0
         if any(value < 0 for value in met_pool_dict.values()):
+
+            count +=1
+            if count == 5:
+                logging.warning(f"Simulation stuck")
 
             ### have to reset model key for model name
             key = model_key
@@ -545,7 +617,7 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                             for met in neg_met_pool_dict}
             ### now this gives the maximum/upper bound for the metabolites given abundance
             neg_met_pool_diff_scaled = {met: diff / model_abun_st_t_step for met, diff in neg_met_pool_diff.items()}
-
+            logging.warning(f"Neg_met dict:\n {neg_met_pool_diff_scaled}")
             
             ### update met_pool_df
             met_pool_df = pd.DataFrame.from_dict(met_pool_dict_pre_t_st, orient='index',
@@ -578,7 +650,12 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                     
                     #rxn.lower_bound = -100.0#-1.0*flux_value
                     if rxn.id in list(neg_met_pool_diff_scaled.keys()):
-                        rxn.lower_bound = -1.0*neg_met_pool_diff_scaled[rxn.id]
+                        temp_value = neg_met_pool_diff_scaled[rxn.id]
+                        if np.isnan(temp_value):
+                            rxn.lower_bound = 0
+                        else:    
+                        #logging.warning(f"This met is causing problems:\n {rxn.id}")
+                            rxn.lower_bound = -1.0*neg_met_pool_diff_scaled[rxn.id]
                     else:
                         rxn.lower_bound = -1.0*met_pool_df[met_pool_df['reaction'] == rxn.id]['fluxValue'].iloc[0]
                     #print(f"Setting {rxn.id} lower bound to {rxn.lower_bound}")
@@ -604,7 +681,8 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                 #print('Print medium used for optimization:',model_abun_dict[key]['model'].medium)
                 ## seem to have some infeasible solutions, unclear why 
                 # put fluxes in df for manipulation
-                temp_pfba_df = temp_pfba.to_frame().filter(regex='EX_.*_b$|bio', axis = 0)
+                #temp_pfba_df = temp_pfba.to_frame().filter(regex='EX_.*_b$|bio', axis = 0)
+                temp_pfba_df = temp_pfba.to_frame().filter(regex='EX_|bio', axis = 0)
                 
                 # filter out fluxes that are secreted
                 # signs are flipped here compared to standard fba optimization in cobrapy so must change them
@@ -870,10 +948,10 @@ def change_biomass_bounds(model_abun_dict, glv_params, t_pt):
 ### might be something wrong here, not quite sure, but only happens for DO so leads me to believe its index related
     for count, key in enumerate(model_abun_dict):
         if gr_rt_t_pt[count] > 0:
-            model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound = gr_rt_t_pt[count]
+            model_abun_dict[key]['model'].reactions.get_by_id(id = 'bio1').upper_bound = gr_rt_t_pt[count]
 
         else:
-            model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound = 0
+            model_abun_dict[key]['model'].reactions.get_by_id(id = 'bio1').upper_bound = 0
 
 
 ### Function for changing with MDSINE output ###
@@ -894,6 +972,8 @@ def change_biomass_bounds_MDSINE(model_abun_dict, t_pt, MDSINE_rates):
         ### Add current growth rate to dict for each model
 
         model_abun_dict[key]['curr_gr_rt'] = gr_rt_t_pt[count]
+        logging.info(f"This is the model: {key}")
+        logging.info(f"This is the growth rate: {gr_rt_t_pt[count]}")
 
         ### Now test if given growth rate should be supplied to upper bound of biomass reaction
 
@@ -955,12 +1035,16 @@ def opt_model(model_abun_dict, pfba):
 
 ### this is the main function that wraps all other helper functions ### 
 
-def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time, num_t_steps, glv_out, glv_params, environ_cond, pfba, MDSINE_rates, Diet, time_points_feed, time_scaler, output_file_path, flux_sampling, host, random_constraints):
+def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time, num_t_steps, glv_out, glv_params, environ_cond, pfba, MDSINE_rates, Diet, output_file_path, flux_sampling, host, random_constraints, AGORA_models):
 
     ###############################
     ### Here start logging file ###
     ###############################
 
+    decay_term = 24
+    constrain_to_original_met_pool = 'yes'
+
+    
     logger_filename = output_file_path + "/gLV_FBA.log"
 
     logging.basicConfig(level=logging.INFO, filename=logger_filename,filemode="w",
@@ -976,7 +1060,20 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
         modelseed_to_bigg = host['modelseed_to_bigg']
         host_model = host['host_model']
 
-    unique_mets_list = list(np.unique(Diet['reaction'].to_list() + environ_cond['reaction'].to_list()))
+    if Diet != 'None':
+
+    #if Diet.empty == False:
+        unique_mets_list = list(np.unique(Diet['reaction'].to_list() + environ_cond['reaction'].to_list()))
+        num_unique_mets = len(unique_mets_list)
+        logging.info(f"Total num of unique mets:{num_unique_mets}")
+
+        logging.info(f"Decay term: {decay_term}")
+
+    
+
+    logging.info(f"constrain_to_original_met_pool?: {constrain_to_original_met_pool}")
+
+
 
     if isinstance(random_constraints,pd.DataFrame):
         constrain_mets = True
@@ -1048,7 +1145,10 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
 
     model_abun_dict = init_model_abun(model_names=list_model_names,models = list_models, init_abun=initial_abundance, glv_out=glv_out)
 
-    diet_dict = dict(zip(Diet['reaction'], Diet['fluxValue']))
+
+    if Diet != 'None':
+    #if Diet.empty == False:
+        diet_dict = dict(zip(Diet['reaction'], Diet['fluxValue']))
     
     for i in tqdm(range(0, num_t_steps)):
         #print('Time step: ', i)
@@ -1072,11 +1172,18 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
             met_pool_df = met_pool_df.groupby('reaction', as_index=False).sum()
         '''
         ### this line is for only keeping metabolites of interest in met pool
-        #met_pool_df = met_pool_df[met_pool_df['reaction'].isin(unique_mets_list)]
+
+        ##############################################################################
+        ### IF YOU WANT TO LIMIT SIMS TO METS OF INTEREST MUST UNCOMMENT THIS LINE ###
+        ##############################################################################
+        #1/3#
+        #if constrain_to_original_met_pool == 'yes':
+
+        #    met_pool_df = met_pool_df[met_pool_df['reaction'].isin(unique_mets_list)]
         ### here we should incorporate the host GEM
-        if i == 0:
-            continue
-        elif host != None:
+        #if i == 0:
+        #    continue
+        if host != None:
             met_pool_df = opt_host_model(host_model = host_model, translation_dict_bigg_to_modelseed=bigg_to_modelseed, translation_dict_modelseed_to_bigg=modelseed_to_bigg, met_pool_df = met_pool_df)
             if constrain_mets == True:
             #print(random_constraints_filt)
@@ -1088,9 +1195,18 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
                     #met_pool_df[met_pool_df['reaction'] == met]['fluxValue'].iloc[0] = temp
                     met_pool_df.loc[met_pool_df['reaction'] == met_to_grab, 'fluxValue'] = temp
         ### this line is for only keeping metabolites of interest in met pool
-        #met_pool_df = met_pool_df[met_pool_df['reaction'].isin(unique_mets_list)]
+
+
+        logging.info(f"This is the met pool after Mouse GEM part 2, right before going in to change the media for bacteria: {met_pool_df.to_string()}")
+
+        ##############################################################################
+        ### IF YOU WANT TO LIMIT SIMS TO METS OF INTEREST MUST UNCOMMENT THIS LINE ###
+        ##############################################################################            
+        #2/3#
+        #if constrain_to_original_met_pool == 'yes':
+        #    met_pool_df = met_pool_df[met_pool_df['reaction'].isin(unique_mets_list)]
         # Step 1. Change media conditions of models 
-        change_media(model_abun_dict= model_abun_dict, supplied_media= met_pool_df)
+        change_media(model_abun_dict= model_abun_dict, supplied_media= met_pool_df, AGORA_models=AGORA_models)
 
         #change_media(model_abun_dict= model_abun_dict, supplied_media= environ_cond)
 
@@ -1127,7 +1243,7 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
         # could just say if crap is smaller than 1e-10 just drop it and combine that with smaller enough time steps should be able to get around
         # possibility of having negative flux values... I think 
         ### hmm but what if it gets rid of things that are secreted in small amounts at beginning????
-        met_pool_dict = dict((k, v) for k, v in met_pool_dict.items() if v > 1e-30)
+        met_pool_dict = dict((k, v) for k, v in met_pool_dict.items() if v > 1e-10)
 
         #print('This is updated met_pool_dict:\n',met_pool_dict)
         
@@ -1197,14 +1313,27 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
             met_pool_df['fluxValue'] = .999*met_pool_df['fluxValue']
         '''
         #met_pool_df['fluxValue'] = .95*met_pool_df['fluxValue']
-        met_pool_df['fluxValue'] = (1-(1/72))*met_pool_df['fluxValue']
+        if host != None:
+            met_pool_df['fluxValue'] = (1-(1/decay_term))*met_pool_df['fluxValue']
         #print('Metabolite pool after decay term', met_pool_df)
-        met_pool_df = pd.concat([met_pool_df, Diet])
+        
+        if Diet != 'None':
+        #if Diet.empty == False:
+            met_pool_df = pd.concat([met_pool_df, Diet])
 
         # Group by reaction and sum
         met_pool_df = met_pool_df.groupby('reaction', as_index=False).sum()
         ### this line is for only keeping metabolites of interest in met pool
-        #met_pool_df = met_pool_df[met_pool_df['reaction'].isin(unique_mets_list)]
+
+        ##############################################################################
+        ### IF YOU WANT TO LIMIT SIMS TO METS OF INTEREST MUST UNCOMMENT THIS LINE ###
+        ##############################################################################
+
+        #3/3#
+        #if constrain_to_original_met_pool == 'yes':
+        #    met_pool_df = met_pool_df[met_pool_df['reaction'].isin(unique_mets_list)]
+
+
         if constrain_mets == True and i != 0:
             #print(random_constraints_filt)
             for met in range(0, len(random_constraints_filt)):

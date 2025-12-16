@@ -68,7 +68,7 @@ for key in subject_dict.keys():
     ### subject to predict, subject with metabolomics data
     subject_to_predict = subject_dict[key]#1948#1510#2000
     ### Set test num
-    test_num = 108
+    test_num = 127
     ### set time scaler
     time_scaler = 24#192#24
     ### Scaling factor
@@ -76,7 +76,7 @@ for key in subject_dict.keys():
     ### Total time steps
     total_time_steps = 415
     ### Simulation notes
-    notes = 'full simulations, no constraints, only allow uptake of mets of interest'
+    notes = 'Testing with upper bound of 0.5 on host with correct met additions for RC diet, also decay term is 48, constraint on uptake of mets, to 60 mets of interest, testing whether to plot on log scale or not'
 
 
 
@@ -535,7 +535,7 @@ for key in subject_dict.keys():
     interpolated_met_values = pd.read_csv(int_met_values_file_name, index_col=0)
     
 
-    met_pool_over_time, model_abun_dict = static_dfba(list_model_names=model_names, list_models=models_list, initial_abundance=init_abun, total_sim_time=415, num_t_steps=total_time_steps, glv_out=np.array(abun_hr_df_filt.T), glv_params=None, environ_cond=metabolomics_data_initial_sub_1948, pfba=False, MDSINE_rates=rate_df_filt, Diet=rc_diet_MS_convert, time_points_feed = feeding_schedule, time_scaler=time_scaler, output_file_path = plot_dir_path, flux_sampling=False, host = host_dict, random_constraints = 'No')#interpolated_met_values)
+    met_pool_over_time, model_abun_dict, mets_used_for_constraint = static_dfba(list_model_names=model_names, list_models=models_list, initial_abundance=init_abun, total_sim_time=415, num_t_steps=total_time_steps, glv_out=np.array(abun_hr_df_filt.T), glv_params=None, environ_cond=metabolomics_data_initial_sub_1948, pfba=False, MDSINE_rates=rate_df_filt, Diet=rc_diet_MS_convert, output_file_path = plot_dir_path, flux_sampling=False, host = host_dict, random_constraints = 'No', AGORA_models = 'No')#interpolated_met_values)
 
 
 
@@ -1139,9 +1139,9 @@ for key in subject_dict.keys():
         temp_exp = metabolomics_data_sub_1948.loc[met,:]
         temp_int = interpolated_met_values.loc[met,:]
 
-        temp_pearson = pearsonr(temp_sim.to_list(), temp_int.to_list()[:415])
+        temp_pearson = pearsonr(temp_sim.to_list(), temp_int)#.to_list()[:415])
 
-        true = np.array(temp_int.to_list()[:415])
+        true = np.array(temp_int.to_list())#[:415])
         pred = np.array(temp_sim.to_list())
 
         rmse = np.sqrt(np.mean((true - pred)**2))
@@ -1205,7 +1205,7 @@ for key in subject_dict.keys():
     merged_exp_sim_met_data
 
     # %%
-    x = y = np.linspace(0,25,50)
+    x = y = np.linspace(0,5,10)
 
     # %%
     num_plots = 8
@@ -1273,7 +1273,7 @@ for key in subject_dict.keys():
         
             # Scatter plot on the respective subplot
         sns.scatterplot(ax=axes[i], data=temp, 
-                        x=temp['exp_conc'], y=temp['sim_conc'], hue='metabolites', palette=color_map)
+                        x=np.log1p(temp['exp_conc']), y=np.log1p(temp['sim_conc']), hue='metabolites', palette=color_map)
 
         sns.lineplot(ax=axes[i], x=x, y = y)
         temp_pearson = pearsonr(np.log1p(temp['exp_conc']), np.log1p(temp['sim_conc']), alternative='greater')
@@ -1288,9 +1288,9 @@ for key in subject_dict.keys():
         temp_pearson_stat_round = np.round(temp_pearson.statistic,4)
         temp_pearson_val_round = np.round(temp_pearson.pvalue,4)
         #axes[i].set_xlim(0,25)
-        axes[i].set_ylim(10e-3,10e3)
-        axes[i].set_xscale('log')
-        axes[i].set_yscale('log')
+        #axes[i].set_ylim(10e-3,10e3)
+        #axes[i].set_xscale('log')
+        #axes[i].set_yscale('log')
         axes[i].set_title(f"Day {time}\n Spearman: {temp_spearman_stat_round}, Spearman_p_val: {temp_spearman_p_val_round}\n Pearson: {temp_pearson_stat_round}, Pearson_p_val: {temp_pearson_val_round}")
         axes[i].set_xlabel('Exp Conc')
         axes[i].set_ylabel('Sim Conc')
