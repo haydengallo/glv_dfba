@@ -68,15 +68,15 @@ for key in subject_dict.keys():
     ### subject to predict, subject with metabolomics data
     subject_to_predict = subject_dict[key]#1948#1510#2000
     ### Set test num
-    test_num = 127
+    test_num = 132
     ### set time scaler
     time_scaler = 24#192#24
     ### Scaling factor
-    scal_fact = 1e10#9.220114e10
+    scal_fact = 1e11#9.220114e10
     ### Total time steps
     total_time_steps = 415
     ### Simulation notes
-    notes = 'Testing with upper bound of 0.5 on host with correct met additions for RC diet, also decay term is 48, constraint on uptake of mets, to 60 mets of interest, testing whether to plot on log scale or not'
+    notes = 'Testing with upper bound of 0.5 on host with correct met additions for RC diet, also decay term is 48, constraint on uptake of mets, to 60 mets of interest, testing whether to plot on log scale or not, adding 20g host, ok actually turned on the upper bound for host to 1000.0 lol'
 
 
 
@@ -535,7 +535,23 @@ for key in subject_dict.keys():
     interpolated_met_values = pd.read_csv(int_met_values_file_name, index_col=0)
     
 
-    met_pool_over_time, model_abun_dict, mets_used_for_constraint = static_dfba(list_model_names=model_names, list_models=models_list, initial_abundance=init_abun, total_sim_time=415, num_t_steps=total_time_steps, glv_out=np.array(abun_hr_df_filt.T), glv_params=None, environ_cond=metabolomics_data_initial_sub_1948, pfba=False, MDSINE_rates=rate_df_filt, Diet=rc_diet_MS_convert, output_file_path = plot_dir_path, flux_sampling=False, host = host_dict, random_constraints = 'No', AGORA_models = 'No')#interpolated_met_values)
+    met_pool_over_time, model_abun_dict, mets_used_for_constraint = static_dfba(list_model_names=model_names, 
+                                                                                     list_models=models_list, 
+                                                                                     initial_abundance=init_abun, 
+                                                                                     total_sim_time=415, 
+                                                                                     num_t_steps=total_time_steps, 
+                                                                                     glv_out=np.array(abun_hr_df_filt.T), 
+                                                                                     glv_params=None, 
+                                                                                     environ_cond=metabolomics_data_initial_sub_1948, 
+                                                                                     pfba=False, 
+                                                                                     MDSINE_rates=rate_df_filt, 
+                                                                                     Diet=rc_diet_MS_convert, 
+                                                                                     output_file_path = plot_dir_path, 
+                                                                                     flux_sampling=False, 
+                                                                                     host = host_dict, 
+                                                                                     random_constraints = 'No', 
+                                                                                     AGORA_models = 'No',
+                                                                                     calc_neg_consumption = 'No')#interpolated_met_values)
 
 
 
