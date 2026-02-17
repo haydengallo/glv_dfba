@@ -60,6 +60,7 @@ logging.getLogger("cobra").setLevel(logging.ERROR)
 #################################################################################################################################################################
 
 subject_dict = {1953:1948, 1507:1510, 1999:2000}
+#subject_dict = {1507:1510, 1999:2000}
 
 for key in subject_dict.keys():
 
@@ -68,17 +69,22 @@ for key in subject_dict.keys():
     ### subject to predict, subject with metabolomics data
     subject_to_predict = subject_dict[key]#1948#1510#2000
     ### Set test num
-    test_num = 132
+    test_num = 19
     ### set time scaler
     time_scaler = 24#192#24
     ### Scaling factor
-    scal_fact = 1e11#9.220114e10
-    ### Total time steps
+    scal_fact = 1e12#9.220114e10
+    ### Total time steps    
     total_time_steps = 415
     ### Simulation notes
-    notes = 'Testing with upper bound of 0.5 on host with correct met additions for RC diet, also decay term is 48, constraint on uptake of mets, to 60 mets of interest, testing whether to plot on log scale or not, adding 20g host, ok actually turned on the upper bound for host to 1000.0 lol'
 
+    notes = 'using glv constraints plus 1g mice '
+    use_glv_params = 'yes'
 
+    if use_glv_params == 'yes':
+        glv_params = np.load('/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun/merged_studies_fixed_cluster_100_its_daily/glv_params_dict.npy', allow_pickle=True).item()
+    else:
+        glv_params = None
 
     ## ok now need to reconstruct the time series basically 
 
@@ -524,7 +530,9 @@ for key in subject_dict.keys():
     ### Save the results
     output_folder = 'filtering_hourly_resolution'
 
-    plot_dir_path = '/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun/MDSINE_vs_Exp_plots_' + output_folder + '/test_' + str(test_num) + '/Subject_' + str(subject_to_plot)
+    #plot_dir_path = '/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun/MDSINE_vs_Exp_plots_' + output_folder + '/test_' + str(test_num) + '/Subject_' + str(subject_to_plot)
+    plot_dir_path = '/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun/new_constraints_test_MDSINE_vs_Exp_plots_' + output_folder + '/test_' + str(test_num) + '/Subject_' + str(subject_to_plot)
+
 
     plot_dir = Path(plot_dir_path)
     os.makedirs(plot_dir, exist_ok=True)
@@ -541,7 +549,7 @@ for key in subject_dict.keys():
                                                                                      total_sim_time=415, 
                                                                                      num_t_steps=total_time_steps, 
                                                                                      glv_out=np.array(abun_hr_df_filt.T), 
-                                                                                     glv_params=None, 
+                                                                                     glv_params=glv_params, 
                                                                                      environ_cond=metabolomics_data_initial_sub_1948, 
                                                                                      pfba=False, 
                                                                                      MDSINE_rates=rate_df_filt, 
