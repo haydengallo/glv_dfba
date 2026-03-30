@@ -20,7 +20,7 @@ from scipy.optimize import least_squares
 from scipy.optimize import curve_fit
 import sys
 import os
-import openpyxl
+#import openpyxlftq
 import gurobipy
 
 import pymc as pm
@@ -99,6 +99,11 @@ def change_media(model_abun_dict, supplied_media, AGORA_models):
 
 
     for key in model_abun_dict:
+
+        ### add to skip if host is key
+
+        if key == 'host':
+            continue
         
         if AGORA_models == 'yes':
             temp_media = make_media(model_abun_dict[key]['model'], media=supplied_media_copy)
@@ -164,7 +169,7 @@ def change_media(model_abun_dict, supplied_media, AGORA_models):
     return
 
 
-def opt_host_model(host_model, met_pool_df, translation_dict_bigg_to_modelseed, translation_dict_modelseed_to_bigg):
+def opt_host_model(host_model, met_pool_df, translation_dict_bigg_to_modelseed, translation_dict_modelseed_to_bigg, model_abun_dict):
 
     # ok here need to call host_model and set correct objective
     host_model.objective = {host_model.reactions.BIOMASS_mm_1_no_glygln: 1}
@@ -257,7 +262,7 @@ def opt_host_model(host_model, met_pool_df, translation_dict_bigg_to_modelseed, 
     #sol = host_model.optimize()
     sol = cobra.flux_analysis.pfba(host_model)
     logging.info(f"this is mouse solution to fba: {sol}")
-    logging.info(f"This is host summary of what is happening {host_model.summary()}")
+    #logging.info(f"This is host summary of what is happening {host_model.summary()}")
 
     sol_fba_fluxes = sol.to_frame().filter(regex='EX_', axis = 0)
     #sol_fba_fluxes = sol.fluxes.to_frame().filter(regex='EX_', axis = 0)
@@ -308,13 +313,17 @@ def opt_host_model(host_model, met_pool_df, translation_dict_bigg_to_modelseed, 
 
     #### Everything should just be np.abs here b/c signage is taken care of in update_met_pool
 
-    test_uptake['fluxes'] = np.abs(test_uptake['fluxes'])#*20
-    test_secrete['fluxes'] = np.abs(test_secrete['fluxes'])#*20
+    test_uptake['fluxes'] = np.abs(test_uptake['fluxes'])
+    test_secrete['fluxes'] = np.abs(test_secrete['fluxes'])
 
     ### convert uptake, secrete, and met_pool_df to dicts 
     uptake_dict = dict(zip(test_uptake['index'], test_uptake['fluxes']))
     secrete_dict = dict(zip(test_secrete['index'], test_secrete['fluxes']))
     met_pool_dict = dict(zip(met_pool_df['reaction'], met_pool_df['fluxValue']))
+
+    ### here add the uptake and secrete dict to the opt_host_model['host'] dict
+    model_abun_dict['host']['flux_up'].append(uptake_dict.copy())
+    model_abun_dict['host']['flux_sec'].append(secrete_dict.copy())
 
 
     ### now finally make changes to met_pool_df
@@ -329,11 +338,11 @@ def opt_host_model(host_model, met_pool_df, translation_dict_bigg_to_modelseed, 
 
     logging.info(f"This is the met pool after Mouse GEM: {met_pool_df.to_string()}")
 
-    return met_pool_df
+    return met_pool_df, model_abun_dict
 
 ### this is to be run after optimization step 
 
-def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_pt, model_names, flux_sampling, calc_neg_consumption):
+def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_pt, model_names, flux_sampling, calc_neg_consumption, this_is_stable_t):
 
     ### just set delta_t equal to 1 for now 
 
@@ -483,13 +492,22 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                 model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (model_abun_dict[key]['abun']*delta_t*pfba_obj_val)
             
         else:
+            ### here avoid numerical tolerance issues 
+            #if model_abun_dict[key]['curr_gr_rt'] <= 0:
+                #fba_obj_val = 0
+                #temp_uptake = pd.DataFrame()
+                #temp_secrete = pd.DataFrame()
+            
+            #else:
 
             sol_fba = model_abun_dict[key]['model'].optimize()
 
             #logging.info(f'Status of pfba: {temp_pfba.status}')
             #logging.info(f'fba: {sol_fba}')
 
+            # use next line when using kbase models
             sol_fba_fluxes = sol_fba.fluxes.to_frame().filter(regex='EX_.*_b$|bio', axis = 0)
+            # use this next line when using agora models
             #sol_fba_fluxes = sol_fba.fluxes.to_frame().filter(regex='EX_|bio', axis = 0)
 
             # secreted should have negative sign to align with normal FBA
@@ -515,7 +533,13 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
             else:
                 fba_obj_val = filtered['fluxes'].iloc[0]
 
+            if model_abun_dict[key]['curr_gr_rt'] <= 0 or fba_obj_val == 0:
+                temp_uptake = pd.DataFrame()
+                temp_secrete = pd.DataFrame()
+
             logging.info(f'fba obj val: {fba_obj_val}')
+            logging.info(f'secrete: {temp_secrete}')
+            logging.info(f'uptake: {temp_uptake}')
 
             ### use next line if using AGORA models
             #if fba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound:
@@ -595,14 +619,17 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
 
                 else:
 
-                    #print('Model abun before negativity:', model_abun_dict[key]['abun'])
-                    logging.info(f"Model abun before negativity where 2: {model_abun_dict[key]['abun']}")
-                    ### go back to this if new constraints don't work
-                    #model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (model_abun_dict[key]['abun']*delta_t*model_abun_dict[key]['curr_gr_rt'])
-                    model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (model_abun_dict[key]['abun']*delta_t*model_abun_dict[key]['curr_gr_rt'])
-                    #model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (model_abun_dict[key]['abun']*model_abun_dict[key]['curr_gr_rt'])
-                    #print('Model abun after negativity:', model_abun_dict[key]['abun'])
-                    logging.info(f"Model abun after negativity: {model_abun_dict[key]['abun']}")
+                    if this_is_stable_t == None:
+                        ### had to add this b/c technicallly in steady state bac abundance shouldn't be changing, so i guess we ignore both the positive and the negative growth 
+
+                        #print('Model abun before negativity:', model_abun_dict[key]['abun'])
+                        logging.info(f"Model abun before negativity where 2: {model_abun_dict[key]['abun']}")
+                        ### go back to this if new constraints don't work
+                        #model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (model_abun_dict[key]['abun']*delta_t*model_abun_dict[key]['curr_gr_rt'])
+                        model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (model_abun_dict[key]['abun']*delta_t*model_abun_dict[key]['curr_gr_rt'])
+                        #model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (model_abun_dict[key]['abun']*model_abun_dict[key]['curr_gr_rt'])
+                        #print('Model abun after negativity:', model_abun_dict[key]['abun'])
+                        logging.info(f"Model abun after negativity: {model_abun_dict[key]['abun']}")
 
                 ## Basically if ever gets to zero or negative reset to a very small number such that always available to grow 
 
@@ -611,12 +638,14 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                     model_abun_dict[key]['abun'] = 1e-15
 
             else:
-                #### I think since if i make model_abun_dict[key]['curr_gr_rt']=1 then never enter top if statement when using glv_params b/c model_abun_dict[key]['curr_gr_rt'] will never change from original initialization
-                logging.info(f"Model abun before growth: {model_abun_dict[key]['abun']}")
-                #model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (model_abun_dict[key]['abun']*delta_t*(fba_obj_val))
-                model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (1/24)*(model_abun_dict[key]['abun']*delta_t*(fba_obj_val+model_abun_dict[key]['int_matrix_eff']))
-                logging.info(f"Model abun after growth: {model_abun_dict[key]['abun']}")
-                logging.info(f"This is net growth: {fba_obj_val+model_abun_dict[key]['int_matrix_eff']}")
+
+                if this_is_stable_t == None:
+                    #### I think since if i make model_abun_dict[key]['curr_gr_rt']=1 then never enter top if statement when using glv_params b/c model_abun_dict[key]['curr_gr_rt'] will never change from original initialization
+                    logging.info(f"Model abun before growth: {model_abun_dict[key]['abun']}")
+                    model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (model_abun_dict[key]['abun']*delta_t*(fba_obj_val))
+                    #model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (1/24)*(model_abun_dict[key]['abun']*delta_t*(fba_obj_val+model_abun_dict[key]['int_matrix_eff']))
+                    logging.info(f"Model abun after growth: {model_abun_dict[key]['abun']}")
+                    #logging.info(f"This is net growth: {fba_obj_val+model_abun_dict[key]['int_matrix_eff']}")
 
                 if model_abun_dict[key]['abun'] <= 0:
 
@@ -797,8 +826,10 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                 #print('Print medium used for optimization:',model_abun_dict[key]['model'].medium)
                 ## seem to have some infeasible solutions, unclear why 
                 # put fluxes in df for manipulation
-                #temp_pfba_df = temp_pfba.to_frame().filter(regex='EX_.*_b$|bio', axis = 0)
-                temp_pfba_df = temp_pfba.to_frame().filter(regex='EX_|bio', axis = 0)
+                # use this with Kbase models
+                temp_pfba_df = temp_pfba.to_frame().filter(regex='EX_.*_b$|bio', axis = 0)
+                # use this with AGORA models
+                #temp_pfba_df = temp_pfba.to_frame().filter(regex='EX_|bio', axis = 0)
                 
                 # filter out fluxes that are secreted
                 # signs are flipped here compared to standard fba optimization in cobrapy so must change them
@@ -859,7 +890,10 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
 
                 sol_fba = model_abun_dict[key]['model'].optimize()
 
+                 # use next line when using kbase models
                 sol_fba_fluxes = sol_fba.fluxes.to_frame().filter(regex='EX_.*_b$|bio', axis = 0)
+                # use this next line when using agora models
+                #sol_fba_fluxes = sol_fba.fluxes.to_frame().filter(regex='EX_|bio', axis = 0)
 
                 # secreted should have negative sign to align with normal FBA
                 test_secrete = sol_fba_fluxes[sol_fba_fluxes['fluxes'] > 0]
@@ -1124,7 +1158,10 @@ def change_biomass_bounds_MDSINE(model_abun_dict, t_pt, MDSINE_rates):
 ### might be something wrong here, not quite sure, but only happens for DO so leads me to believe its index related
     for count, key in enumerate(model_abun_dict):
 
-        ### This is the string to use for the biomass function 
+        ### skip if the host is the key
+        if key == 'host':
+            continue
+        
 
         biomass_reactions = [rxn for rxn in model_abun_dict[key]['model'].reactions if biomass_pattern.search(rxn.id)]
         biomass_reactions = str(biomass_reactions[-1]).split(':')[0]
@@ -1196,14 +1233,14 @@ def opt_model(model_abun_dict, pfba):
 
 ### this is the main function that wraps all other helper functions ### 
 
-def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time, num_t_steps, glv_out, glv_params, environ_cond, pfba, MDSINE_rates, Diet, output_file_path, flux_sampling, host, random_constraints, AGORA_models, calc_neg_consumption):
+def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time, num_t_steps, glv_out, glv_params, environ_cond, pfba, MDSINE_rates, Diet, output_file_path, flux_sampling, host, random_constraints, AGORA_models, calc_neg_consumption, stable_t_points):
 
     ###############################
     ### Here start logging file ###
     ###############################
 
     decay_term = 24
-    constrain_to_original_met_pool = 'yes'
+    constrain_to_original_met_pool = 'no'
 
     
     logger_filename = output_file_path + "/gLV_FBA.log"
@@ -1306,6 +1343,13 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
 
     model_abun_dict = init_model_abun(model_names=list_model_names,models = list_models, init_abun=initial_abundance, glv_out=glv_out)
 
+    ### here add the host to the model_abun_dict if needed
+    if host != None:
+        ### create host dict 
+        model_abun_dict['host'] = {}
+        model_abun_dict['host']['flux_up'] = []
+        model_abun_dict['host']['flux_sec'] = []
+
 
     #if Diet != 'None':
     if Diet.empty == False:
@@ -1374,7 +1418,7 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
         #if i == 0:
         #    continue
         if host != None:
-            met_pool_df = opt_host_model(host_model = host_model, translation_dict_bigg_to_modelseed=bigg_to_modelseed, translation_dict_modelseed_to_bigg=modelseed_to_bigg, met_pool_df = met_pool_df)
+            met_pool_df, model_abun_dict = opt_host_model(host_model = host_model, translation_dict_bigg_to_modelseed=bigg_to_modelseed, translation_dict_modelseed_to_bigg=modelseed_to_bigg, met_pool_df = met_pool_df, model_abun_dict=model_abun_dict)
             if constrain_mets == True:
             #print(random_constraints_filt)
                 for met in range(0, len(random_constraints_filt)):
@@ -1411,9 +1455,17 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
             change_biomass_bounds(model_abun_dict=model_abun_dict, glv_params=glv_params, t_pt=i)
 
 
-        ### if stable_t_pts == None:
-            #        'nothing'
-        ### elif t_pt in stable_t_pts:
+        if stable_t_points == None:
+            logging.info(f"Not performing stability analysis here")
+            this_is_stable_t = None
+        elif i in stable_t_points:
+            stability_gr_rates(model_abun_dict)
+            this_is_stable_t = True
+        else:
+            this_is_stable_t = None
+
+
+            
         #   use new function here to loop through perform fba, and change the upper bounds of everything to only be the lowest achievable growth rates and also need to find a way to not update the abundances basically            
 
 
@@ -1423,7 +1475,7 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
 
         # Step 4. Adjust model optimization output fluxes based on abundance and time step size
 
-        total_sys_uptake, total_sys_secretion, met_pool_dict = model_opt_out(model_abun_dict=model_abun_dict, delta_t= (total_sim_time/num_t_steps), pfba=pfba, glv_params=glv_params, t_pt=i, model_names = list_model_names, met_pool_dict=met_pool_dict, flux_sampling=flux_sampling, calc_neg_consumption = calc_neg_consumption)
+        total_sys_uptake, total_sys_secretion, met_pool_dict = model_opt_out(model_abun_dict=model_abun_dict, delta_t= (total_sim_time/num_t_steps), pfba=pfba, glv_params=glv_params, t_pt=i, model_names = list_model_names, met_pool_dict=met_pool_dict, flux_sampling=flux_sampling, calc_neg_consumption = calc_neg_consumption, this_is_stable_t=this_is_stable_t)
 
         #print('this is met pool dict returned after model opt out step', met_pool_dict)
         ### should actually move this update_met_pool function within model_opt_out so as to be done after every optimization of species 
@@ -1647,10 +1699,73 @@ def linstability_get_steadystates_and_eigenvalues(end_profile, start_profile, Be
 
 
 
+def stability_gr_rates(model_abun_dict):
+
+    ### ok first lose the contraints from mdsine and set upper bound to something large like 100 
+
+
+    biomass_pattern = re.compile(r'(bio)', re.IGNORECASE)
+
+    for count, key in enumerate(model_abun_dict):
+
+        if key == 'host':
+            continue
+
+        ### This is the string to use for the biomass function 
+
+        biomass_reactions = [rxn for rxn in model_abun_dict[key]['model'].reactions if biomass_pattern.search(rxn.id)]
+        biomass_reactions = str(biomass_reactions[-1]).split(':')[0]
+
+        ### Add current growth rate to dict for each model
+
+        logging.info(f"This is the model: {key}")
+
+        ### Now test if given growth rate should be supplied to upper bound of biomass reaction
+        ### use universal growth rate for the upperbound of every model
+        model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound = 100
 
 
 
+    steady_gr_rate = 100
 
+    for count, key in enumerate(model_abun_dict):
+
+        if key == 'host':
+            continue
+
+        ### here perform fba on the model and grab the growth rate
+        ### some holder to grab the value and then keep it if smaller than new value
+
+        ### ok here now that we have the full value we loop through again and change the upperbounds of the biomass reaction 
+
+        temp_sol = model_abun_dict[key]['model'].slim_optimize()
+
+        logging.info(f"Growth rate for {key} is {temp_sol}")
+
+        if 0 < temp_sol < steady_gr_rate:
+            steady_gr_rate = temp_sol
+
+    
+    logging.info(f"This is the new growth rate for steady state {steady_gr_rate}")
+
+
+    for count, key in enumerate(model_abun_dict):
+
+        if key == 'host':
+            continue
+
+        ### This is the string to use for the biomass function 
+
+        biomass_reactions = [rxn for rxn in model_abun_dict[key]['model'].reactions if biomass_pattern.search(rxn.id)]
+        biomass_reactions = str(biomass_reactions[-1]).split(':')[0]
+
+        ### Add current growth rate to dict for each model
+
+        logging.info(f"This is the model: {key}")
+
+        ### Now test if given growth rate should be supplied to upper bound of biomass reaction
+        ### use universal growth rate for the upperbound of every model
+        model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound = steady_gr_rate
 
 
 

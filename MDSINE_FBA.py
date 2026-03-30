@@ -69,17 +69,17 @@ for key in subject_dict.keys():
     ### subject to predict, subject with metabolomics data
     subject_to_predict = subject_dict[key]#1948#1510#2000
     ### Set test num
-    test_num = 19
+    test_num = 12
     ### set time scaler
     time_scaler = 24#192#24
     ### Scaling factor
-    scal_fact = 1e12#9.220114e10
+    scal_fact = 1e11
     ### Total time steps    
     total_time_steps = 415
     ### Simulation notes
 
-    notes = 'using glv constraints plus 1g mice '
-    use_glv_params = 'yes'
+    notes = 'host at 1g , scale factor of 1e11, non scaled diet, stable timepoints, .0001, .9 probability, explicitly add host fluxes to the output, upper bound of host is 0.5, not constrained to original met pool'
+    use_glv_params = 'no'
 
     if use_glv_params == 'yes':
         glv_params = np.load('/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun/merged_studies_fixed_cluster_100_its_daily/glv_params_dict.npy', allow_pickle=True).item()
@@ -90,6 +90,40 @@ for key in subject_dict.keys():
 
     ### need to load in all of the processed_data 
     # Make the data and validation Study objects
+    
+    #.001 cut off
+    '''
+    stability_dict = {1953:[147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159,
+       160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 179, 180, 181,
+       182, 183, 184, 185, 186, 187, 188], 
+       1507:[154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166,
+       167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179,
+       180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192,
+       193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205,
+       206], 
+       1999:[151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163,
+       164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176,
+       177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189,
+       190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202,
+       203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215,
+       216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228,
+       229, 230, 231, 232, 233, 234, 235, 236]}
+    '''
+    #.0001 cutoff
+    stability_dict = {1953:[], 
+       1507:[161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173,
+       174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186,
+       187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198], 
+       1999:[159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171,
+       172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184,
+       185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197,
+       198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210,
+       211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223,
+       224, 225, 226, 227]}
+
+    stable_t_points = stability_dict[key]
+
+
 
     processed_data = Path('/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun')
 
@@ -531,7 +565,8 @@ for key in subject_dict.keys():
     output_folder = 'filtering_hourly_resolution'
 
     #plot_dir_path = '/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun/MDSINE_vs_Exp_plots_' + output_folder + '/test_' + str(test_num) + '/Subject_' + str(subject_to_plot)
-    plot_dir_path = '/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun/new_constraints_test_MDSINE_vs_Exp_plots_' + output_folder + '/test_' + str(test_num) + '/Subject_' + str(subject_to_plot)
+   # plot_dir_path = '/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun/new_constraints_test_MDSINE_vs_Exp_plots_' + output_folder + '/test_' + str(test_num) + '/Subject_' + str(subject_to_plot)
+    plot_dir_path = '/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun/more_final_tests_MDSINE_vs_Exp_plots_' + output_folder + '/test_' + str(test_num) + '/Subject_' + str(subject_to_plot)
 
 
     plot_dir = Path(plot_dir_path)
@@ -541,6 +576,10 @@ for key in subject_dict.keys():
 
     int_met_values_file_name = '/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun/subject_' + str(subject_to_predict) + '_interpolated_met_data.csv'
     interpolated_met_values = pd.read_csv(int_met_values_file_name, index_col=0)
+
+    scaled_RC_diet_file_name = '/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/scaled_RC_diet_MS.csv'
+    scaled_RC_diet = pd.read_csv(scaled_RC_diet_file_name, index_col=0)
+    scaled_RC_diet['fluxValue'] = (diet_scaler*scaled_RC_diet['fluxValue'])
     
 
     met_pool_over_time, model_abun_dict, mets_used_for_constraint = static_dfba(list_model_names=model_names, 
@@ -553,13 +592,14 @@ for key in subject_dict.keys():
                                                                                      environ_cond=metabolomics_data_initial_sub_1948, 
                                                                                      pfba=False, 
                                                                                      MDSINE_rates=rate_df_filt, 
-                                                                                     Diet=rc_diet_MS_convert, 
+                                                                                     Diet=rc_diet_MS_convert,#scaled_RC_diet, 
                                                                                      output_file_path = plot_dir_path, 
                                                                                      flux_sampling=False, 
                                                                                      host = host_dict, 
                                                                                      random_constraints = 'No', 
                                                                                      AGORA_models = 'No',
-                                                                                     calc_neg_consumption = 'No')#interpolated_met_values)
+                                                                                     calc_neg_consumption = 'No',
+                                                                                     stable_t_points = stable_t_points)#interpolated_met_values)
 
 
 
@@ -583,17 +623,25 @@ for key in subject_dict.keys():
 
     ### make empty array for storing FBA abun data for each species and then convert to df for easy plotting 
 
+    ### need to drop host key from model_abun_dict here
+    del model_abun_dict['host']
+
     FBA_biomass = np.zeros([len(model_abun_dict.keys()), len(model_abun_dict['14ac4eaad5b4e2ff3c071832e0fd4229']['fba_biomass'])])
     FBA_biomass
 
     # %%
     ### Convert FBA abun output to relative abundance 
+  
     count = 0
     for key in model_abun_dict:
+        if key == 'host':
+            continue
         FBA_biomass[count,:] = model_abun_dict[key]['fba_biomass']
         count+=1
 
     FBA_biomass_df = pd.DataFrame(FBA_biomass)
+    
+    
     FBA_biomass_df.index = model_abun_dict.keys()
 
     index_to_filter_by = FBA_biomass_df.index
@@ -755,6 +803,7 @@ for key in subject_dict.keys():
 
     # Define stacking order
     feature_order = MDSINE_output['FeatureID'].value_counts().index.tolist()
+    print(feature_order)
     reversed_order = feature_order[::-1]  # For stackplot
 
     # Assign consistent colors
@@ -843,7 +892,7 @@ for key in subject_dict.keys():
     ax_top.tick_params(labelbottom=False)
     plt.subplots_adjust(hspace=0.1, right=0.75)
 
-
+    print(feature_order)
     # Create custom legend handles using your color map
     legend_elements = [
         Patch(facecolor=color_map[feat], label=ASV_string_to_species_names_dict[feat])

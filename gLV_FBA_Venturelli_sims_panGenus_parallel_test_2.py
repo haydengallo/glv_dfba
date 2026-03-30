@@ -77,11 +77,12 @@ cobra_models_dir_path = data_dir + '/panGenusModels_Venturelli_corrected'
 scal_fac = 1
 t_steps = 48
 
-test_num = 34
+test_num = 39
 ### are we using single timepoint dataset or multi?
-multi_t_pt_dataset = 'yes'
+multi_t_pt_dataset = 'no'
 
 if multi_t_pt_dataset == 'yes':
+    #test_name = 'panGenusmodel_sims_multi_t_pt_forward_sim'
     test_name = 'panGenusmodel_sims_multi_t_pt'
     #test_name = 'panSpeciesmodel_sims_multi_t_pt'
     #test_name = 'Strainmodel_sims_multi_t_pt'
@@ -94,7 +95,7 @@ else:
 
 
  ### Simulation notes
-notes = 'doing forward simulations using settings from test_27 of long dataset, so regular fba with cgly for a caccae growth and some oxygen, also now trying to get all time points to save for the multi t point dataset, still trying to get this to work '
+notes = 'doing ivp static dataset with numerical tolerance fix now, think now i can get around numerical tolerance, testing to see if i can get around numerical tolerance issues etc, think i have been able to save bacterial abundance at everytime point so latent trajectory with longitudinal dataset,trying to get better save output for bacterial abun in mutli timpepoint sims, using forward sim for longitudainl dataset instead of interpolated values, doing forward simulations using settings from test_44 of long dataset, so regular fba with cgly for a caccae growth and some oxygen, no scaling, oxygen back to 0.1, just adding compoujnds from relaxed fba at 0.1, so everything additional wasnt in original media, remoevd lines that dont allow uptake of butyrate and succiante, regular fba'
 #notes = 'fba now,for some reason seems in cobrapy need cgly for a caccae to grow, pan genus models, adding compounds required for each model to reach growth rate of 1, these compounds added at 1.0, regular fba, extra oxygen at 10'
 #notes = 'had to redo full sims b/c of miss ordering in index of glv params from mdsine not aligning with allspecies master species order list, still correcting indexing issues, think this sim will be corrected, hopefully'
 #notes = 'also added EX_alagln(e), and more fol, trying to get multi timepoint sim to work, fixing some saving issues can at least save final time point now i think, adding EX_rbflvrd(e) and EX_pnto_R(e) at basal levels to get dorea species to grow'
@@ -277,9 +278,10 @@ m2_final_abun_met = m2_final_abun_met.drop(columns = ['Time'])
 if multi_t_pt_dataset == 'yes':
 
     #### need to reorder columns of the various dataframes here to align with 
-
+    # use this line if forward sim with initial values from the experimental data
     #m2_init_abun = multi_func_data_filt_reorder_initial
     # need to use the initial values from MDSINE2 
+    ### use next 5 lines if using mdsine latent trajectories for multi time point sim
     m2_init_abun = pd.read_csv('/Users/haydengallo/UMass Medical School Dropbox/Hayden Gallo/Bucci_Lab/glv_FBA/Venturelli_data/multi_t_pt_for_glv_fba_init_vals_MDSINE2.csv', index_col=0)
     ### need to reindex the mdsine2 data to align with the experimental data
     ### VERY IMPORTANT ###
@@ -334,7 +336,7 @@ met_abun_predict_final_df[:] = 0
 if multi_t_pt_dataset == 'yes':
     met_abun_predict_final_df = met_abun_predict_final_df.drop(columns = ['Time'])
     bac_abun_predict_final_df = bac_abun_predict_final_df.drop(columns= ['Time'])
-    #met_abun_predict_final_df.columns = ['Time','EX_but(e)','EX_ac(e)', 'EX_lac_L(e)',  'EX_succ(e)']
+    met_abun_predict_final_df.columns = ['EX_but(e)','EX_ac(e)', 'EX_lac_L(e)',  'EX_succ(e)']
 else:
     met_abun_predict_final_df.columns = ['EX_but(e)','EX_ac(e)', 'EX_lac_L(e)',  'EX_succ(e)']
 
@@ -415,32 +417,32 @@ defined_media = {
     "EX_malt(e)": -4.382120947,
     "EX_h2o(e)": -55.50645091,
     # Trace/small additions set to -0.001
-    "EX_12dgr180(e)": -1,
-    "EX_2dmmq8(e)": -1,
-    "EX_acgam(e)": -1,
-    "EX_adn(e)": -1,
-    "EX_alagln(e)": -1,
-    "EX_cobalt2(e)": -1,
-    "EX_cu2(e)": -1,
-    "EX_fol(e)": -1,
-    "EX_galmannan(e)": -1,
-    "EX_glygln(e)": -1,
-    "EX_glyglu(e)": -1,
-    "EX_mqn7(e)": -1,
-    "EX_mqn8(e)": -1,
-    "EX_nac(e)": -1,
-    "EX_nmn(e)": -1,
-    "EX_ocdca(e)": -1,
-    "EX_pheme(e)": -1,
-    "EX_pnto_R(e)": -1,
-    "EX_ptrc(e)": -1,
-    "EX_q8(e)": -1,
-    "EX_sheme(e)": -1,
-    "EX_spmd(e)": -1,
-    "EX_o2(e)": -10,
-    "EX_rbflvrd(e)": -1,
-    "EX_zn2(e)": -1,
-    "EX_cgly(e)": -1}
+    "EX_12dgr180(e)": -.1,
+    "EX_2dmmq8(e)": -.1,
+    "EX_acgam(e)": -.1,
+    "EX_adn(e)": -.1,
+    "EX_alagln(e)": -.1,
+    "EX_cobalt2(e)": -.1,
+    "EX_cu2(e)": -.1,
+    "EX_fol(e)": -.1,
+    "EX_galmannan(e)": -.1,
+    "EX_glygln(e)": -.1,
+    "EX_glyglu(e)": -.1,
+    "EX_mqn7(e)": -.1,
+    "EX_mqn8(e)": -.1,
+    "EX_nac(e)": -.1,
+    "EX_nmn(e)": -.1,
+    "EX_ocdca(e)": -.1,
+    "EX_pheme(e)": -.1,
+    "EX_pnto_R(e)": -.1,
+    "EX_ptrc(e)": -.1,
+    "EX_q8(e)": -.1,
+    "EX_sheme(e)": -.1,
+    "EX_spmd(e)": -.1,
+    "EX_o2(e)": -.1,
+    "EX_rbflvrd(e)": -.1,
+    "EX_zn2(e)": -.1,
+    "EX_cgly(e)": -.1}
 
 
 ### this is the defined media for the pan species models 
@@ -1062,19 +1064,23 @@ def run_simulations(i):
     if multi_t_pt_dataset == 'yes':
         m2_final_abun_bac_filt = m2_final_abun_bac.loc[spec_exp_name,:]
         m2_final_abun_met_filt = m2_final_abun_met.loc[spec_exp_name,:]
+        # testing ivp with dynamic dataset... 
+        ### use next line if using the latent trajectory from MDSINE2
         sol = np.array(Venturelli_long_MDSINE2_interpolated_data[spec_exp_name])
     else:    
         m2_final_abun_bac_filt = m2_final_abun_bac.iloc[sim_to_grab,:]
         m2_final_abun_met_filt = m2_final_abun_met.iloc[sim_to_grab,:]
     
     ### basically can't just filter by bacteria at zero, b/c MDSINE2 doesn't start at values of zero, rather very small numbers like 1e-7 for species that aren't techincally present, so filter by things greater than 1e-5
-    if multi_t_pt_dataset == 'yes':
-        bac_to_keep_for_inf = list(np.where(init_abun >= 1e-5)[0])
-        print('bac to keep',bac_to_keep_for_inf)
-        print('index of init abun', spec_exp_name)
+    #if multi_t_pt_dataset == 'yes':
+    #    bac_to_keep_for_inf = list(np.where(init_abun >= 1e-5)[0])
+    #    print('bac to keep',bac_to_keep_for_inf)
+    #    print('index of init abun', spec_exp_name)
 
-    else:
-        bac_to_keep_for_inf = list(np.where(init_abun != 0)[0])
+    #else:
+    #    bac_to_keep_for_inf = list(np.where(init_abun != 0)[0])
+    
+    bac_to_keep_for_inf = list(np.where(init_abun != 0)[0])
     
     # Calculate growth rates
     glv_derived_growth_rates = np.zeros([t_steps+1, 25])
@@ -1131,13 +1137,14 @@ def run_simulations(i):
         environ_cond=defined_media_df,
         pfba=False,
         MDSINE_rates=rate_df,
-        Diet='None',
+        Diet=pd.DataFrame(),
         output_file_path=plot_dir_path_spec_exp,
         flux_sampling=False,
         host=None,
         random_constraints='No',
         AGORA_models='yes',
-	    calc_neg_consumption='yes'
+	    calc_neg_consumption='no',
+        stable_t_points = None
     )
 
     met_save = plot_dir_path_spec_exp + '/met_pool.npy'
@@ -1172,8 +1179,8 @@ def run_simulations(i):
     bac_final_predictions = np.zeros(25)  # All 25 species
     FBA_biomass_df_plot = FBA_biomass_df.copy()
     FBA_biomass_df_plot = FBA_biomass_df_plot * scal_fac
-    final_abundances = FBA_biomass_df_plot.iloc[:, -1].values
-    bac_final_predictions[bac_to_keep_for_inf] = final_abundances
+    #final_abundances = FBA_biomass_df_plot.iloc[:, -1].values
+    #bac_final_predictions[bac_to_keep_for_inf] = final_abundances
     
     # Get final metabolite concentrations
     met_pool_over_time_df = pd.DataFrame(met_pool_over_time).fillna(0)
@@ -1186,6 +1193,7 @@ def run_simulations(i):
     if multi_t_pt_dataset == 'yes':
         # Only keep timepoints 16, 32, 48
         timepoints_to_keep = [16, 32, 48]
+        timepoints_to_keep_bac_abun = [0, 16, 32, 48]
         
         print(f"\nDEBUG - Experiment {spec_exp_name}:")
         print(f"met_pool_over_time_df shape: {met_pool_over_time_df.shape}")
@@ -1203,7 +1211,33 @@ def run_simulations(i):
                 print(met_final[mets_present[0]])
         else:
             met_final = pd.DataFrame()
+        
+                # Make bacteria predictions a DataFrame indexed by time
+        # Make bacteria predictions a DataFrame indexed by time, keeping all 25 species
+        n_total_species = 25
+
+        # Extract only inferred bacteria from FBA results
+        bac_subset = FBA_biomass_df_plot.iloc[:, timepoints_to_keep_bac_abun].T  # shape: (timepoints, inferred_species)
+
+        # Create full 25-species DataFrame filled with zeros
+        bac_final_predictions = pd.DataFrame(
+            0.0,
+            index=bac_subset.index,                 # timepoints: 0,16,32,48
+            columns=bac_abun_predict_final_df.columns  # full 25 species
+        )
+
+        # Fill only the inferred species
+        inferred_species_cols = bac_abun_predict_final_df.columns[bac_to_keep_for_inf]
+        bac_final_predictions.loc[:, inferred_species_cols] = bac_subset.values
+
+        # Now:
+        # index = [0,16,32,48]
+        # columns = species
     else:
+        final_abundances = FBA_biomass_df_plot.iloc[:, -1].values
+        bac_final_predictions[bac_to_keep_for_inf] = final_abundances
+
+
         # Single timepoint - return final value only as before
         met_pool_over_time_df_melt = met_pool_over_time_df.melt(ignore_index=False)
         met_pool_over_time_df_melt = met_pool_over_time_df_melt.reset_index()
@@ -1245,13 +1279,9 @@ if __name__ == "__main__":
     # Run parallel simulations with progress bar
     results = joblib.Parallel(n_jobs=n_jobs, verbose=10)(
         joblib.delayed(run_simulations)(i) 
-        #for i in tqdm(range(len(m2_init_abun)))
-        for i in tqdm(range(2))
+        for i in tqdm(range(len(m2_init_abun)))
+        #for i in tqdm(range(2))
     )
-        # Ensure metabolite prediction columns exist
-    for col_name in met_cols_mapping.values():
-        if col_name not in met_abun_predict_final_df.columns:
-            met_abun_predict_final_df[col_name] = 0.0
 
     # ---- metabolite column mapping ----
     met_cols_mapping = {
@@ -1260,14 +1290,38 @@ if __name__ == "__main__":
         "EX_lac_L(e)": "Lactate",
         "EX_succ(e)": "Succinate"
     }
+        # Ensure metabolite prediction columns exist
+    for col_name in met_cols_mapping.values():
+        if col_name not in met_abun_predict_final_df.columns:
+            met_abun_predict_final_df[col_name] = 0.0
+
+
 
     # Aggregate results into the final DataFrames
     print("\nAggregating results...")
     for result in results:
         sim_idx = result['sim_idx']
-        
-        # Store bacteria predictions
-        bac_abun_predict_final_df.iloc[sim_idx, :] = result['bac_predictions']
+
+        if multi_t_pt_dataset == 'yes':
+
+            exp_name = result['spec_exp_name']
+            bac_pred = result['bac_predictions']   # DataFrame indexed by time
+
+            exp_row_positions = np.where(
+                bac_abun_predict_final_df.index == exp_name
+            )[0]
+
+            assert len(exp_row_positions) == len(bac_pred), \
+                f"Bacteria row count mismatch for {exp_name}"
+
+            for pos, (time_val, pred_values) in zip(exp_row_positions, bac_pred.iterrows()):
+                bac_abun_predict_final_df.iloc[
+                    pos,
+                    :
+                ] = pred_values.values
+        else:
+            # Store bacteria predictions
+            bac_abun_predict_final_df.iloc[sim_idx, :] = result['bac_predictions']
         
         # Store metabolite predictions
         met_pred = result['met_predictions']
@@ -1281,7 +1335,7 @@ if __name__ == "__main__":
             exp_name = result['spec_exp_name']
             met_pred = result['met_predictions']  # DataFrame indexed by time
 
-            # 🔒 get the row POSITIONS that already exist for this experiment
+            #get the row POSITIONS that already exist for this experiment
             exp_row_positions = np.where(
                 met_abun_predict_final_df.index == exp_name
             )[0]
@@ -1290,7 +1344,10 @@ if __name__ == "__main__":
             assert len(exp_row_positions) == len(met_pred), \
                 f"Row count mismatch for {exp_name}"
 
-            # 🔹 write one timepoint per row (no broadcasting possible)
+            #print(met_abun_predict_final_df)
+            #print(met_pred)
+
+            #write one timepoint per row (no broadcasting possible)
             for pos, (time_val, pred_values) in zip(exp_row_positions, met_pred.iterrows()):
                 for bigg_id, col_name in met_cols_mapping.items():
                     if bigg_id in pred_values.index:
