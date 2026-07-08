@@ -1,9 +1,7 @@
 ### Hayden Gallo
-### 10/20/25
+### 7/6/26
 ### Bucci Lab
-### Running gLV-FBA on Venturelli data, simulating all co-culture combos 
-### This an edit to the script gLV_FBA_Venturelli_sims_panGenus where the goal is to parallelize the simulations via 
-### making deep copies of the GEMs in memory and also leveraging joblib.parallel
+### Running COMETS on Venturelli data, simulating all co-culture combos to then be able to compare to DySCoMeMo
 
 
 import numpy as np
@@ -20,15 +18,9 @@ from scipy.optimize import least_squares
 from scipy.optimize import curve_fit
 import sys
 import os
-import openpyxl
-import gurobipy
+#import openpyxl
+#import gurobipy
 
-import pymc as pm
-import pytensor
-import pytensor.tensor as pt
-from pymc.ode import DifferentialEquation
-from pytensor.compile.ops import as_op
-import arviz as az
 
 import time
 import joblib 
@@ -42,8 +34,6 @@ import subprocess
 import argparse
 import re
 
-from helper_functions import *
-
 from matplotlib.patches import Patch
 from matplotlib.backends.backend_pdf import PdfPages
 import json
@@ -54,7 +44,48 @@ from tqdm import tqdm
 import warnings
 warnings.filterwarnings("ignore")
 
+
+import cometspy
+import gurobipy
+
+### here specify the java jar paths for COMETS 
+
+# Set fresh environment variables
+os.environ['COMETS_HOME'] = '/Applications/COMETS/'
+os.environ['GUROBI_COMETS_HOME'] = '/Library/gurobi1000/macos_universal2/'
+os.environ['GUROBI_HOME']="/Library/gurobi1000/macos_universal2/"
+
+#export PATH="${PATH}:${GUROBI_HOME}/bin"
+os.environ['LD_LIBRARY_PATH']="Library/gurobi1000/macos_univeral2/lib"
+# Import cometspy after setting environment
+#import cometspy
+
+# Print current settings to verify
+print("\nEnvironment Settings:")
+print(f"GUROBI_COMETS_HOME: {os.environ.get('GUROBI_COMETS_HOME')}")
+print(f"COMETS_HOME: {os.environ.get('COMETS_HOME')}")
+print(os.environ.get('LD_LIBRARY_PATH'))
+# Initialize COMETS
+
+
 # export GRB_LICENSE_FILE=/Users/haydengallo/.gurobi/gurobi.lic
+### here specify the java jar paths for COMETS 
+
+#os.environ['COMETS_HOME']='/Users/haydengallo/Documents/comets_macos/comets_2.12.5/'
+
+
+#COMETS_HOME = os.environ['COMETS_HOME']
+
+#ortools_jars = ':'.join([
+#    f"{COMETS_HOME}/lib/or-tools/ortools-java-9.11.4210.jar",
+#    f"{COMETS_HOME}/lib/or-tools/ortools-darwin-aarch64-9.11.4210.jar",
+#    f"{COMETS_HOME}/lib/or-tools/jna-5.12.1.jar",
+#    f"{COMETS_HOME}/lib/or-tools/jna-jpms-5.12.1.jar",
+#    f"{COMETS_HOME}/lib/or-tools/jna-platform-5.12.1.jar",
+#    f"{COMETS_HOME}/lib/or-tools/jna-platform-jpms-5.12.1.jar",
+#    f"{COMETS_HOME}/lib/or-tools/protobuf-java-2.5.0.jar",
+#])
+
 
 
 #################################################################################################################################################################
@@ -66,8 +97,10 @@ logging.getLogger("cobra").setLevel(logging.ERROR)
 ### Parameters to set prior to simulation ###
 #############################################
 
-#data_dir = '/Users/haydengallo/UMass_Dropbox/UMass Medical School Dropbox/Hayden Gallo/Bucci_Lab/glv_FBA/Venturelli_data'
-data_dir = '/Users/haydengallo/UMass Medical School Dropbox/Hayden Gallo/Bucci_Lab/glv_FBA/Venturelli_data'
+### macbook dir
+data_dir = '/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/Venturelli_data'
+### mac studio dir
+#data_dir = '/Users/haydengallo/UMass Medical School Dropbox/Hayden Gallo/Bucci_Lab/glv_FBA/Venturelli_data'
 # directory for pan genus models 
 cobra_models_dir_path = data_dir + '/panGenusModels_Venturelli_corrected'
 ### directory for pan species models
@@ -77,9 +110,9 @@ cobra_models_dir_path = data_dir + '/panGenusModels_Venturelli_corrected'
 scal_fac = 1
 t_steps = 48
 
-test_num = 50
+test_num = 10
 ### are we using single timepoint dataset or multi?
-multi_t_pt_dataset = 'yes'
+multi_t_pt_dataset = 'no'
 
 if multi_t_pt_dataset == 'yes':
     #test_name = 'panGenusmodel_sims_multi_t_pt_forward_sim'
@@ -95,7 +128,7 @@ else:
 
 
  ### Simulation notes
-notes = 'just testing again with the 1.0 growth rate metabolites and long sim'
+notes = 'trying to parallelize comets simulations, testing to make sure the plateau cycle cutoff works, now making sure final mets and biomass are correctly saved. Ok seems like i can correctly get comets to save so will go ahead and run it now'
 # notes = 'doing ivp static dataset with numerical tolerance fix now, think now i can get around numerical tolerance, testing to see if i can get around numerical tolerance issues etc, think i have been able to save bacterial abundance at everytime point so latent trajectory with longitudinal dataset,trying to get better save output for bacterial abun in mutli timpepoint sims, using forward sim for longitudainl dataset instead of interpolated values, doing forward simulations using settings from test_44 of long dataset, so regular fba with some oxygen, no scaling, oxygen back to 0.1, just adding compoujnds from relaxed fba at 0.1, so everything additional wasnt in original media, remoevd lines that dont allow uptake of butyrate and succiante, regular fba, Adding relaxed fba compounds when growth rate is 0.3 which is consistent with MICOM'
 #notes = 'fba now,for some reason seems in cobrapy need cgly for a caccae to grow, pan genus models, adding compounds required for each model to reach growth rate of 1, these compounds added at 1.0, regular fba, extra oxygen at 10'
 #notes = 'had to redo full sims b/c of miss ordering in index of glv params from mdsine not aligning with allspecies master species order list, still correcting indexing issues, think this sim will be corrected, hopefully'
@@ -107,19 +140,12 @@ notes = 'just testing again with the 1.0 growth rate metabolites and long sim'
 
 #plot_dir_path_base = '/Users/haydengallo/UMass_Dropbox/UMass Medical School Dropbox/Hayden Gallo/Bucci_Lab/glv_FBA/Venturelli_data/' + test_name + '/test_' + str(test_num)
 
-plot_dir_path_base = '/Users/haydengallo/UMass Medical School Dropbox/Hayden Gallo/Bucci_Lab/glv_FBA/Venturelli_data/' + test_name + '/test_' + str(test_num)
+plot_dir_path_base = '/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/DySCoMeMo_dfba_comparison/COMETS/' + test_name + '/test_' + str(test_num)
+
+#plot_dir_path_base = '/Users/haydengallo/UMass Medical School Dropbox/Hayden Gallo/Bucci_Lab/glv_FBA/DySCoMeMo_dfba_comparison/COMETS/' + test_name + '/test_' + str(test_num)
 
 plot_dir = Path(plot_dir_path_base)
 os.makedirs(plot_dir, exist_ok=True)
-
-
-### define generalized Lotka-Volterra function 
-def gLV(t, init_abun, paired_growth_matrix, basal_grow):
-    return init_abun * (basal_grow + np.dot(paired_growth_matrix, init_abun))
-#def gLV(t, init_abun, paired_growth_matrix, basal_grow):
-
-    #return ((np.dot(init_abun, paired_growth_matrix) + basal_grow) * init_abun)
-
 
 ### Setting up some metadata from metadata_2019_06_17.py Clark et al 2021 
 
@@ -127,53 +153,6 @@ def gLV(t, init_abun, paired_growth_matrix, basal_grow):
 #Define the descriptors involved in this experiment
 numspecies=25
 allspecies=['ER','FP','AC','CC','RI','EL','CH','DP','BH','CA','PC','PJ','DL','CG','BF','BO','BT','BU','BV','BC','BY','DF','BL','BP','BA']
-phylogeny=['PC','PJ','BV','BF','BO','BT','BC','BY','BU','DP','BL','BA','BP','CA','EL','FP','CH','AC','BH','CG','ER','RI','CC','DL','DF']
-phylogeny_nobpb=['PC','PJ','BV','BF','BO','BT','BC','BY','BU','DP','BL','BA','BP','CA','EL','CH','BH','CG','DL','DF']
-phylogeny_nogaps=['PC','PJ','BF','BO','BT','DP','BA','BP','CA','EL','CH','BH','CG','DL','DF']
-speciesvectorDict={}
-n=1
-for species in allspecies:
-	speciesvectorDict[species]=n
-	n+=1
-
-k=0
-phylogenyvectorDict={}
-for species in phylogeny:
-	phylogenyvectorDict[species]=k
-	k+=1
-
-bpbindices=[15,17,20,21,22]
-bpbspecies=['ER','FP','AC','CC','RI']
-spbspecies=['PJ','BT','BF','BC','BO','BV','PC']
-others=['EL','CH','DP','BH','CA','PC','PJ','DL','CG','BF','BO','BT','BU','BV','BC','BY','DF','BL','BP','BA']
-comms=['COMM0','COMM1','COMM2','COMM3','COMM4']
-
-commsDict={
-	'COMM0':['DP','BH','CA','PC','EL','CH','BO','BT','BU','BV'],
-	'COMM1':['ER','FP','DP','BH','CA','PC','EL','CH','BO','BT','BU','BV'],
-	'COMM2':['ER','FP','AC','HB','CC','RI','DP','BH','CA','PC','EL','CH','BO','BT','BU','BV'],
-	'COMM3':['ER','FP','AC','HB','CC','RI','EL','CH','DP','BH','CA','PC','PJ','DL','CG','BF','BO','BT','BU','BV','BC','BY','DF','BL','BP','BA'],
-	'COMM4':['EL','CH','DP','BH','CA','PC','PJ','DL','CG','BF','BO','BT','BU','BV','BC','BY','DF','BL','BP','BA'],
-	'COMM5':['ER','FP','AC','CC','RI','DP','BH','CA','PC','EL','CH','BO','BT','BU','BV'],
-	'COMM6':['ER','FP','AC','CC','RI','EL','CH','DP','BH','CA','PC','PJ','DL','CG','BF','BO','BT','BU','BV','BC','BY','DF','BL','BP','BA'],
-	'COMM7':['ER','FP','RI','BH','DP','PJ','AC','CC','BV','DL','BY','BL','DF','BA','EL'],
-	'COMM8':['ER','FP','RI','AC','CC']
-}
-
-COMM0=['DP','BH','CA','PC','EL','CH','BO','BT','BU','BV']
-COMM1=['ER','FP','DP','BH','CA','PC','EL','CH','BO','BT','BU','BV']
-COMM2=['ER','FP','AC','HB','CC','RI','DP','BH','CA','PC','EL','CH','BO','BT','BU','BV']
-COMM3=['ER','FP','AC','HB','CC','RI','EL','CH','DP','BH','CA','PC','PJ','DL','CG','BF','BO','BT','BU','BV','BC','BY','DF','BL','BP','BA']
-COMM4=['EL','CH','DP','BH','CA','PC','PJ','DL','CG','BF','BO','BT','BU','BV','BC','BY','DF','BL','BP','BA']
-COMM5=['ER','FP','AC','CC','RI','DP','BH','CA','PC','EL','CH','BO','BT','BU','BV']
-COMM6=['ER','FP','AC','CC','RI','EL','CH','DP','BH','CA','PC','PJ','DL','CG','BF','BO','BT','BU','BV','BC','BY','DF','BL','BP','BA']
-COMM7=['ER','FP','RI','BH','DP','PJ','AC','CC','BV','DL','BY','BL','DF','BA','EL']
-COMM8=['ER','FP','RI','AC','CC']
-
-LOOComms=['COMM6']
-for species in phylogeny:
-	LOOComms.append('COMM6*'+species)
-
 		
 namedict={
    'BA': 'Bifidobacterium_adolescentis_ATCC_15703_NC_008618',
@@ -211,30 +190,7 @@ namedict={
 
 
 
-
-## load in the data needed for running simulations
-
-### this is int matrix from MDSINE2
-### old do not use
-#int_matrix = np.load('/Users/haydengallo/UMass Medical School Dropbox/Hayden Gallo/Bucci_Lab/glv_FBA/Venturelli_long_MDSINE_fit/merged_studies_test_3/int_matrix.npy', allow_pickle=True)
-# New, do use
-int_matrix = np.load('/Users/haydengallo/UMass Medical School Dropbox/Hayden Gallo/Bucci_Lab/glv_FBA/Venturelli_long_MDSINE_fit/merged_studies_test_3/int_matrix_reindexed_12_11_25.npy', allow_pickle=True)
-### this is int matrix from Venturelli 
-#int_matrix_path = data_dir + '/interaction_matrix.npy'
-#int_matrix = np.load(int_matrix_path, allow_pickle=True)
-
-### this is growth rates from MDSINE2
-### Old do not use
-#growth_rates = np.load('/Users/haydengallo/UMass Medical School Dropbox/Hayden Gallo/Bucci_Lab/glv_FBA/Venturelli_long_MDSINE_fit/merged_studies_test_3/growth_rates.npy', allow_pickle=True)
-### new, do use
-growth_rates = np.load('/Users/haydengallo/UMass Medical School Dropbox/Hayden Gallo/Bucci_Lab/glv_FBA/Venturelli_long_MDSINE_fit/merged_studies_test_3/growth_rates_12_11_25.npy', allow_pickle=True)
-### this is growth rates from Venturelli 
-#growth_rates_path = data_dir + '/growth_rates.npy'
-#growth_rates = np.load(growth_rates_path, allow_pickle=True)
-
-### index of growth rates and int_matrix ordering is based on original experimental data ordering not on the allspecies list that is being used as the master order here on out
-
-
+### load in the experimental data 
 
 m2_init_abun_path = data_dir + '/m2_time_series_init_no_mets.csv'
 m2_init_abun = pd.read_csv(m2_init_abun_path)
@@ -254,7 +210,9 @@ m2_final_abun_met = m2_final_abun_met.set_index('Experiments')
 
 ### load in mutlifunctional dataset
 
-multi_func_data = pd.read_csv('/Users/haydengallo/UMass Medical School Dropbox/Hayden Gallo/Bucci_Lab/glv_FBA/Venturelli_data/Baranwal_et_al_2022/2021_02_19_MultifunctionalDynamicData.csv', index_col = 0)
+multi_func_data = pd.read_csv('/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/Venturelli_data/Baranwal_et_al_2022/2021_02_19_MultifunctionalDynamicData.csv', index_col = 0)
+
+#multi_func_data = pd.read_csv('/Users/haydengallo/UMass Medical School Dropbox/Hayden Gallo/Bucci_Lab/glv_FBA/Venturelli_data/Baranwal_et_al_2022/2021_02_19_MultifunctionalDynamicData.csv', index_col = 0)
 multi_func_data.head()
 
 multi_func_data_filt = multi_func_data.filter(regex = '_OD|Community|Time|Butyrate|Succinate|Acetate|Lactate', axis =1)
@@ -289,7 +247,7 @@ if multi_t_pt_dataset == 'yes':
     m2_init_abun = m2_init_abun.reindex(multi_func_data_filt_reorder_initial.index.to_list())
     ### need to reorder the columns too 
     m2_init_abun = m2_init_abun[allspecies]
-    print(m2_init_abun.index.to_list())
+    #print(m2_init_abun.index.to_list())
 
 
     m2_final_abun_met = multi_func_data_filt_reorder_final[['Time','Butyrate', 'Acetate', 'Lactate', 'Succinate']]
@@ -304,15 +262,6 @@ if multi_t_pt_dataset == 'yes':
 else:
     m2_final_abun_met  = m2_final_abun_met[['Butyrate', 'Acetate', 'Lactate', 'Succinate']]
     #m2_final_abun_bac = m2_final_abun_bac.drop(columns = ['Butyrate', 'Acetate', 'Lactate', 'Succinate'])
-
-
-time = np.linspace(0,t_steps,t_steps+1)
-args = (int_matrix, growth_rates)
-
-
-
-
-
 ### load in all of the GEMs
 
 ### load the cobra models into memory i guess
@@ -337,9 +286,9 @@ met_abun_predict_final_df[:] = 0
 if multi_t_pt_dataset == 'yes':
     met_abun_predict_final_df = met_abun_predict_final_df.drop(columns = ['Time'])
     bac_abun_predict_final_df = bac_abun_predict_final_df.drop(columns= ['Time'])
-    met_abun_predict_final_df.columns = ['EX_but(e)','EX_ac(e)', 'EX_lac_L(e)',  'EX_succ(e)']
+    met_abun_predict_final_df.columns = ['but[e]','ac[e]', 'lac_L[e]',  'succ[e]']
 else:
-    met_abun_predict_final_df.columns = ['EX_but(e)','EX_ac(e)', 'EX_lac_L(e)',  'EX_succ(e)']
+    met_abun_predict_final_df.columns = ['but[e]','ac[e]', 'lac_L[e]',  'succ[e]']
 
 ### Set media conditions 
 
@@ -417,32 +366,6 @@ defined_media = {
     "EX_lac_L(e)": -28.30817052,
     "EX_malt(e)": -4.382120947,
     "EX_h2o(e)": -55.50645091,
-    # Trace/small additions set to -0.001
-    ### metabolites added if minimal growth rate is 0.3
-    #"EX_12dgr180(e)": -.1,
-    #"EX_26dap_M(e)": -.1,
-    #"EX_2dmmq8(e)": -.1,
-    #"EX_4hbz(e)": -.1,
-    #"EX_adn(e)": -.1,
-    #"EX_bglc(e)": -.1,
-    #"EX_cgly(e)": -.1,
-    #"EX_dad_2(e)": -.1,
-    #"EX_dgsn(e)": -.1,
-    #"EX_dhna(e)": -.1,
-    #"EX_fol(e)": -.1,
-    #"EX_glycys(e)": -.1,
-    #"EX_mqn7(e)": -.1,
-    #"EX_mqn8(e)": -.1,
-    #"EX_nac(e)": -.1,
-    #"EX_nmn(e)": -.1,
-    #"EX_o2(e)": -.1,
-    #"EX_ocdca(e)": -.1,
-    #"EX_pnto_R(e)": -.1,
-    #"EX_q8(e)": -.1,
-    #"EX_ribflv(e)": -.1,
-    #"EX_sheme(e)": -.1,
-    #"EX_spmd(e)": -.1,
-    #"EX_thm(e)": -.1}
     ### metabolites added if minimal growth rate is 1
 
     "EX_12dgr180(e)": -.1,
@@ -471,253 +394,28 @@ defined_media = {
     "EX_spmd(e)": -.1,
     "EX_thm(e)": -.1}
 
-    #"EX_12dgr180(e)": -.1,
-    #"EX_2dmmq8(e)": -.1,
-    #"EX_acgam(e)": -.1,
-    #"EX_adn(e)": -.1,
-    #"EX_alagln(e)": -.1,
-    #"EX_cobalt2(e)": -.1,
-    #"EX_cu2(e)": -.1,
-    #"EX_fol(e)": -.1,
-    #"EX_galmannan(e)": -.1,
-    #"EX_glygln(e)": -.1,
-    #"EX_glyglu(e)": -.1,
-    #"EX_mqn7(e)": -.1,
-    #"EX_mqn8(e)": -.1,
-    #"EX_nac(e)": -.1,
-    #"EX_nmn(e)": -.1,
-    #"EX_ocdca(e)": -.1,
-    #"EX_pheme(e)": -.1,
-    #"EX_pnto_R(e)": -.1,
-    #"EX_ptrc(e)": -.1,
-    #"EX_q8(e)": -.1,
-    #"EX_sheme(e)": -.1,
-    #"EX_spmd(e)": -.1,
-    #"EX_o2(e)": -.1,
-    #"EX_rbflvrd(e)": -.1,
-    #"EX_zn2(e)": -.1,
-    #"EX_cgly(e)": -.1}
 
-### this is the defined media for the pan species models 
-'''
-defined_media = {
-    "EX_ca2(e)":  -1.290526021,
-    "EX_na1(e)": -47.34272139,
-    "EX_cu2(e)": -0.021265311,
-    "Ex_cu(e)":  -0.021265311,
-    "EX_so4(e)": -10.22721245,
-    "EX_pydx(e)": -0.009822218,
-    "EX_thymd(e)": -0.021,
-    "EX_xan(e)":  -0.024981921,
-    "EX_fol(e)":  -0.002402832,
-    "EX_orot(e)": -0.064061499,
-    "EX_k(e)":    -6.617592674,
-    "EX_cobalt2(e)": -0.055,
-    "EX_no3(e)":  -0.109323669,
-    "EX_fe3(e)":  -0.066,
-    "EX_fe2(e)":  -0.066,
-    "EX_mg2(e)":  -4.380495746,
-    "EX_mn2(e)":  -0.33,
-    "EX_mobd(e)": -0.004856255,
-    "EX_slnt(e)": -0.000578243,
-    "EX_tungs(e)": -0.003403444,
-    "EX_cl(e)":  -14.45186396,
-    "EX_ni2(e)": -0.01543217,
-    "EX_zn2(e)": -0.061931009,
-    "EX_pnto_R(e)": -0.000419695,
-    "EX_cbl1(e)": -1.47561E-06,
-    "EX_pydxn(e)": -0.000972583,
-    "EX_h(e)": -0.001565646,
-    "EX_ribflv(e)": -1.000531406,
-    "EX_thf(e)": -2.80628E-06,
-    "EX_thm(e)": -0.000593064,
-    "EX_4abz(e)": -0.073072918,
-    "EX_pydam(e)": -0.021,
-    "EX_nh4(e)": -9.347366847,
-    "EX_pi(e)": -6.61327063,
-    "EX_ncam(e)": -0.034392401,
-    "EX_pheme(e)": -0.015338835,
-    "EX_csn(e)": -5.94059E-05,
-    "EX_gua(e)": -5.95514E-05,
-    "EX_ade(e)": -5.99423E-05,
-    "EX_ura(e)": -5.88829E-05,
-    "EX_inost(e)": -6.272202487,
-    "EX_btn(e)": -0.040952069,
-    "EX_ala_L(e)": -5.3,
-    "EX_arg_L(e)": -21.81400689,
-    "EX_asn_L(e)": -2.6,
-    "EX_asp_L(e)": -0.4,
-    "EX_cys_L(e)": -8.4,
-    "EX_glu_L(e)": -0.662721893,
-    "EX_gln_L(e)": -2.7,
-    "EX_his_L(e)": -1,
-    "EX_ile_L(e)": -1.6,
-    "EX_leu_L(e)": -3.6,
-    "EX_lys_L(e)": -2.4,
-    "EX_met_L(e)": -0.84,
-    "EX_phe_L(e)": -4.5,
-    "EX_pro_L(e)": -5.9,
-    "EX_ser_L(e)": -6.4,
-    "EX_thr_L(e)": -1.9,
-    "EX_trp_L(e)": -0.73,
-    "EX_val_L(e)": -2.8,
-    "EX_tyr_L(e)": -3.201059661,
-    "EX_mops(e)": -71.68003181,
-    "EX_hco3_L(e)": -47.6150797,
-    "EX_arab_L(e)": -21.31486045,
-    "EX_glc_D(e)": -24.97835209,
-    "EX_lac_L(e)": -28.30817052,
-    "EX_malt(e)": -4.382120947,
-    "EX_h2o(e)": -55.50645091,
-    # Trace/small additions set to -0.001
-    "EX_12dgr180(e)": -.1,
-    "EX_26dap_M(e)": -.1,
-    "EX_adn(e)": -.1,
-    "EX_bglc(e)": -.1,
-    "EX_cgly(e)": -.1,
-    #"EX_chor(e)": -1,
-    "EX_cytd(e)": -.1,
-    "EX_fol(e)": -.1,
-    #"EX_glc3meacp(e)": -1,
-    #"EX_glycys(e)": -1,
-    "EX_glyphy(e)": -.1,
-    "EX_glytyr(e)": -.1,
-    "EX_hxan(e)": -.1,
-    "EX_mqn7(e)": -.1,
-    "EX_mqn8(e)": -.1,
-    "EX_nac(e)": -.1,
-    "EX_nmn(e)": -.1,
-    #"EX_ocdca(e)": -1,
-    "EX_q8(e)": -.1,
-    "EX_sheme(e)": -.1,
-    "EX_spmd(e)": -.1,
-    "EX_o2(e)": -.1,
-    "EX_rbflv(e)": -.1,
-    #"EX_pnto_R(e)": -1,
-    #"EX_stys(e)": -1,
-    "EX_thm(e)": -.1
-    }
-'''
-### this is the defined media for the strain models 
-'''
-defined_media = {
-    "EX_ca2(e)":  -1.290526021,
-    "EX_na1(e)": -47.34272139,
-    "EX_cu2(e)": -0.021265311,
-    "Ex_cu(e)":  -0.021265311,
-    "EX_so4(e)": -10.22721245,
-    "EX_pydx(e)": -0.009822218,
-    "EX_thymd(e)": -0.021,
-    "EX_xan(e)":  -0.024981921,
-    "EX_fol(e)":  -0.002402832,
-    "EX_orot(e)": -0.064061499,
-    "EX_k(e)":    -6.617592674,
-    "EX_cobalt2(e)": -0.055,
-    "EX_no3(e)":  -0.109323669,
-    "EX_fe3(e)":  -0.066,
-    "EX_fe2(e)":  -0.066,
-    "EX_mg2(e)":  -4.380495746,
-    "EX_mn2(e)":  -0.33,
-    "EX_mobd(e)": -0.004856255,
-    "EX_slnt(e)": -0.000578243,
-    "EX_tungs(e)": -0.003403444,
-    "EX_cl(e)":  -14.45186396,
-    "EX_ni2(e)": -0.01543217,
-    "EX_zn2(e)": -0.061931009,
-    "EX_pnto_R(e)": -0.000419695,
-    "EX_cbl1(e)": -1.47561E-06,
-    "EX_pydxn(e)": -0.000972583,
-    "EX_h(e)": -0.001565646,
-    "EX_ribflv(e)": -1.000531406,
-    "EX_thf(e)": -2.80628E-06,
-    "EX_thm(e)": -0.000593064,
-    "EX_4abz(e)": -0.073072918,
-    "EX_pydam(e)": -0.021,
-    "EX_nh4(e)": -9.347366847,
-    "EX_pi(e)": -6.61327063,
-    "EX_ncam(e)": -0.034392401,
-    "EX_pheme(e)": -0.015338835,
-    "EX_csn(e)": -5.94059E-05,
-    "EX_gua(e)": -5.95514E-05,
-    "EX_ade(e)": -5.99423E-05,
-    "EX_ura(e)": -5.88829E-05,
-    "EX_inost(e)": -6.272202487,
-    "EX_btn(e)": -0.040952069,
-    "EX_ala_L(e)": -5.3,
-    "EX_arg_L(e)": -21.81400689,
-    "EX_asn_L(e)": -2.6,
-    "EX_asp_L(e)": -0.4,
-    "EX_cys_L(e)": -8.4,
-    "EX_glu_L(e)": -0.662721893,
-    "EX_gln_L(e)": -2.7,
-    "EX_his_L(e)": -1,
-    "EX_ile_L(e)": -1.6,
-    "EX_leu_L(e)": -3.6,
-    "EX_lys_L(e)": -2.4,
-    "EX_met_L(e)": -0.84,
-    "EX_phe_L(e)": -4.5,
-    "EX_pro_L(e)": -5.9,
-    "EX_ser_L(e)": -6.4,
-    "EX_thr_L(e)": -1.9,
-    "EX_trp_L(e)": -0.73,
-    "EX_val_L(e)": -2.8,
-    "EX_tyr_L(e)": -3.201059661,
-    "EX_mops(e)": -71.68003181,
-    "EX_hco3_L(e)": -47.6150797,
-    "EX_arab_L(e)": -21.31486045,
-    "EX_glc_D(e)": -24.97835209,
-    "EX_lac_L(e)": -28.30817052,
-    "EX_malt(e)": -4.382120947,
-    "EX_h2o(e)": -55.50645091,
-    # Trace/small additions set to -0.001
-    "EX_26dap_M(e)": -1,
-    "EX_2dmmq8(e)": -1,
-    "EX_2obut(e)": -1,
-    "EX_ade(e)": -1,
-    "EX_adn(e)": -1,
-    "EX_alagln(e)": -1,
-    "EX_alaglu(e)": -1,
-    "EX_alahis(e)": -1,
-    "EX_alathr(e)": -1,
-    "EX_arab_D(e)": -1,
-    "EX_bglc(e)": -1,
-    "EX_cgly(e)": -1,
-    "EX_cit(e)": -1,
-    "EX_cytd(e)": -1,
-    #"EX_glc3meacp(e)": -1,
-    "EX_fol(e)": -1,
-    "EX_glycys(e)": -1,
-    "EX_glymet(e)": -1,
-    "EX_glyphe(e)": -1,
-    "EX_glytyr(e)": -1,
-    "EX_h2s(e)": -1,
-    "EX_hxan(e)": -1,
-    "EX_indole(e)": -1,
-    "EX_lanost(e)": -1,
-    "EX_mqn8(e)": -1,
-    "EX_nac(e)": -1,
-    "EX_nmn(e)": -1,
-    "EX_ocdca(e)": -1,
-    "EX_ptrc(e)": -1,
-    "EX_q8(e)": -1,
-    "EX_sheme(e)": -1,
-    "EX_spmd(e)": -1,
-    "EX_o2(e)": -10,
-    "EX_ura(e)": -1,
-    "EX_pnto_R(e)": -1,
-    "EX_rib_D(e)": -1,
-    "EX_ribflv(e)": -1,
-    "EX_thm(e)": -1
-    }
-'''
 
 defined_media_df = pd.DataFrame.from_dict(defined_media, orient='index')
 defined_media_df = defined_media_df.reset_index()
 defined_media_df.columns = ['reaction', 'fluxValue']
 defined_media_df['fluxValue'] = -1.0*defined_media_df['fluxValue']
 
+defined_media_comets = []
+for rxn, val in defined_media.items():
+    # strip EX_ prefix and convert (e) to [e]
+    met = rxn.replace('EX_', '').replace('Ex_', '').replace('(e)', '[e]')
+    defined_media_comets.append([met, str(abs(val))])
+#print(defined_media_comets)
 
+defined_media_comets = pd.DataFrame(defined_media_comets)
 
+defined_media_comets.columns = ['reaction','fluxValue']
+defined_media_comets['fluxValue'] =  np.double(defined_media_comets['fluxValue'])
+defined_media_comets = dict(zip(defined_media_comets['reaction'], defined_media_comets['fluxValue']))
+print('Media built for COMETS')
+print("###############################################")
+print('Loading in AGORA models')
 
 cobra_models = sorted(cobra_models_dir.glob('*.mat'))
 cobra_models = {f.stem : f for f in cobra_models}
@@ -729,17 +427,13 @@ loaded_models = {}
 #count = 0
 
 for key in cobra_models:
-    #if count == 1:
-    #    break
-    #print(key.split('_'))
     model_name = key.split('_')[2] + '_' + key.split('_')[3]
-    #model_name = key.split('.')[0]
-    #model_name = model_name[3:]
-    #print(model_name)
-    model = cobra.io.load_matlab_model(cobra_models[key])
-    loaded_models[model_name] = model
-    #count+=1
+    ### load in the AGORA model using cobra and then convert to a COMETS model
+    model = cometspy.model(cobra.io.load_matlab_model(cobra_models[key]))
 
+    loaded_models[model_name] = model
+print("###############################################")
+print('Done loading in AGORA models')
 
 adjusted_names = []
 
@@ -760,16 +454,13 @@ for i in allspecies:
     #model_to_grab_genus = model_to_grab.split('_')[0]
     print(model_to_grab)
     correct_model_dict_order[model_to_grab] = loaded_models[model_to_grab]
+    ### ok great put the abbreviation for each model as the id param for each comets model
+    correct_model_dict_order[model_to_grab].id = i
+    ### set optimizer here too 
+    correct_model_dict_order[model_to_grab].optimizer = 'GUROBI'
     correct_model_name_order.append(model_to_grab)
 
 print(correct_model_name_order)
-
-
-param_save = {'Sim_num': test_num, 'Scaling_factor':scal_fac, 'Total_time_steps': t_steps, 'notes':notes}
-param_save_file_name = plot_dir_path_base + '/params.txt'
-with open(param_save_file_name, 'w') as file:
-    file.write(json.dumps(param_save))
-
 
 
 
@@ -1078,8 +769,145 @@ def create_plots(FBA_biomass_df, glv_biomass_df, met_pool_over_time,
         plt.savefig(plot_file_name, bbox_inches="tight")
         plt.close()
 
+### this is a function to help out COMETS and only pull metabolite values from time point where total biomass plateus 
+        
+def find_plateau_cycle(biomass_series, threshold=1e-6):
+    """
+    Find the first cycle where biomass stops increasing.
+    biomass_series: pandas Series with cycle as index, biomass as values
+    """
+    diff = biomass_series.diff().abs()
+    plateau_cycles = diff[diff < threshold].index
+    if len(plateau_cycles) > 0:
+        return plateau_cycles[0]-1
+    else:
+        return biomass_series.index[-1]  # never plateaued, return last cycle
 
 
+def COMETS_call(models_list_current_sim, init_abun, defined_media_comets, plot_dir_path_spec_exp):
+
+    ### here setup the COMETS experiment and params
+
+    # create an empty layout
+    competition_assay = cometspy.layout()
+
+    init_abun = init_abun[0]
+
+    all_exchange_mets = []
+    print('this is models list current sim', len(models_list_current_sim))
+    for j in range(0, len(models_list_current_sim)):
+        ### set initial population
+
+        models_list_current_sim[j].initial_pop = [0, 0 , init_abun]
+        print(models_list_current_sim[j].id)
+        competition_assay.add_model(models_list_current_sim[j])
+        for metabolite in models_list_current_sim[j].get_exchange_metabolites():
+            all_exchange_mets.append(metabolite)
+
+    
+    unique_exchange_mets = np.unique(all_exchange_mets)
+
+    sinks = [f for f in unique_exchange_mets if '[c]' in f]
+
+    ### This is setting the media environment 
+    for a in list(defined_media_comets.keys()):
+        if a in unique_exchange_mets:
+            competition_assay.set_specific_metabolite(a, defined_media_comets[a])
+    for compound in sinks:
+        if 'biomass' not in compound:
+            print(compound)
+            competition_assay.set_specific_metabolite(compound, 1000)
+
+    ### Here we set the params for the comets sim
+
+    comp_params = cometspy.params()
+    comp_params.set_param('timeStep',0.1)
+    comp_params.set_param('maxCycles', 48)
+    comp_params.set_param('defaultVmax', 18.5)
+    comp_params.set_param('defaultKm', 0.000015)
+    comp_params.set_param('spaceWidth', 1)
+    comp_params.set_param('MediaLogRate',1)
+    comp_params.set_param('maxSpaceBiomass', 1000)
+    comp_params.set_param('minSpaceBiomass', 1e-11)
+    comp_params.set_param('writeMediaLog', True)
+    comp_params.set_param('writeTotalBiomassLog', True)
+    comp_params.set_param('writeFluxLog', True)
+    comp_params.set_param('FluxLogRate',1)
+    comp_params.set_param('randomSeed',8)
+    #comp_params.set_param('writeSpecificMediaLog', True)
+    comp_assay = cometspy.comets(competition_assay, comp_params)
+
+    print(plot_dir_path_spec_exp)
+
+    comp_assay.working_dir = plot_dir_path_spec_exp + '/'
+
+    comp_assay.obj_style = "MAX_OBJECTIVE"
+
+    ### need to set the java class path for ortools
+
+    #comp_assay.set_classpath('ortools', ortools_jars)
+    #print(comp_assay.JAVA_CLASSPATH)
+
+    #comp_assay.set_classpath('bin', '/Users/haydengallo/Documents/comets_macos/comets_2.12.5/comets_2.12.5.jar')
+
+
+    try:
+        comp_assay.run(delete_files=False)
+    except RuntimeError as e:
+        print(f"\n=== COMETS FAILED FOR {plot_dir_path_spec_exp} ===")
+        print(comp_assay.run_output[-3000:])  # last 3000 chars of Java output
+        raise
+    #comp_assay.run(delete_files=False)
+
+    biomass = comp_assay.total_biomass
+    total_biomass = biomass.set_index('cycle').sum(axis=1)
+
+    plateau_cycle = find_plateau_cycle(total_biomass, threshold=1e-6)
+
+
+
+    
+    #biomass['t'] = biomass['cycle'] * comp_assay.parameters.all_params['timeStep']
+    #myplot = biomass.drop(columns=['cycle']).plot(x = 't')
+
+    myplot = biomass.plot(x='cycle')
+    myplot.set_ylabel("Biomass (gr.)")
+    plt.savefig(plot_dir_path_spec_exp + '/Biomass.pdf')
+    plt.close()
+
+    ### probably somewhere in here i need to determine when biomass accumulation stops and then that is my final t point for pulling metabolite values 
+
+
+    media = comp_assay.media.copy()
+    #media['t'] = media['cycle'] * comp_assay.parameters.all_params['timeStep']
+
+    media_filt = media[media['metabolite'].isin(['lac_L[e]', 'ac[e]', 'succ[e]', 'but[e]'])]
+
+    fig, ax = plt.subplots()
+
+    sns.lineplot(data = media_filt, x = 'cycle', y = 'conc_mmol', hue='metabolite', lw = 5)
+    ax.set_xlim(0,plateau_cycle)
+    ax.set_ylim(0,75)
+    plt.savefig(plot_dir_path_spec_exp + '/Media_clipped.pdf')
+    plt.close()
+
+    fig, ax = plt.subplots()
+
+    sns.lineplot(data = media_filt, x = 'cycle', y = 'conc_mmol', hue='metabolite', lw = 5)
+    #ax.set_xlim(0,plateau_cycle)
+    plt.savefig(plot_dir_path_spec_exp + '/Media.pdf')
+    plt.close()
+
+    ### here let's filter to get the final biomass (cycle where no more biomass is accumulated)
+
+    final_biomass = biomass.set_index('cycle').iloc[plateau_cycle,:]
+
+    ### ok here now let's go ahead and grab the final amount of metabolites produced according cycle cutoff
+
+    final_mets = media_filt[media_filt['cycle'] == plateau_cycle][['metabolite', 'conc_mmol']]
+ 
+       
+    return final_biomass, final_mets
 
 
 
@@ -1094,77 +922,49 @@ def run_simulations(i):
     # Make deep copies of models for this worker to avoid conflicts
     models_list = [copy.deepcopy(model) for model in list(correct_model_dict_order.values())]
     
+    ### get the correct simulation 
     sim_to_grab = i
     spec_exp_name = m2_init_abun.index.to_list()[sim_to_grab]
     
+    ### make folder to hold simulation result
     plot_dir_path_spec_exp = plot_dir_path_base + '/' + spec_exp_name
     plot_dir = Path(plot_dir_path_spec_exp)
     os.makedirs(plot_dir, exist_ok=True)
     
-    # Get initial abundance
-    ### if using mdsine2 must multiply by whatever constant I used to scale
-    init_abun = np.array(m2_init_abun.iloc[sim_to_grab,:].to_list())*10e8
-    #init_abun = np.array(m2_init_abun.iloc[sim_to_grab,:].to_list())
-    
-    # Run gLV simulation
-    sol = odeint(gLV, init_abun, time, args=args, tfirst=True)
-    
-    ### if using mdsine2 must then rescale the output
-    sol = sol/10e8
-    init_abun = init_abun/10e8
-
+    # Get initial abundance of each bug
+    init_abun = np.array(m2_init_abun.iloc[sim_to_grab,:].to_list())
+    print('init abun', init_abun)
     # Filter data
     if multi_t_pt_dataset == 'yes':
         m2_final_abun_bac_filt = m2_final_abun_bac.loc[spec_exp_name,:]
         m2_final_abun_met_filt = m2_final_abun_met.loc[spec_exp_name,:]
-        # testing ivp with dynamic dataset... 
-        ### use next line if using the latent trajectory from MDSINE2
-        sol = np.array(Venturelli_long_MDSINE2_interpolated_data[spec_exp_name])
+        
+        
     else:    
         m2_final_abun_bac_filt = m2_final_abun_bac.iloc[sim_to_grab,:]
         m2_final_abun_met_filt = m2_final_abun_met.iloc[sim_to_grab,:]
     
-    ### basically can't just filter by bacteria at zero, b/c MDSINE2 doesn't start at values of zero, rather very small numbers like 1e-7 for species that aren't techincally present, so filter by things greater than 1e-5
-    #if multi_t_pt_dataset == 'yes':
-    #    bac_to_keep_for_inf = list(np.where(init_abun >= 1e-5)[0])
-    #    print('bac to keep',bac_to_keep_for_inf)
-    #    print('index of init abun', spec_exp_name)
-
-    #else:
-    #    bac_to_keep_for_inf = list(np.where(init_abun != 0)[0])
     
     bac_to_keep_for_inf = list(np.where(init_abun != 0)[0])
     
-    # Calculate growth rates
-    glv_derived_growth_rates = np.zeros([t_steps+1, 25])
-    for j in range(0, t_steps+1):
-        glv_derived_growth_rates[j,:] = gLV(j, sol[j,:], paired_growth_matrix=int_matrix, basal_grow=growth_rates)
-    
-    glv_abun_df = pd.DataFrame(sol)
-    
-    # Calculate rate array
-    rate_array = np.zeros((25, glv_abun_df.shape[0]-1))
-    for j in range(0, len(glv_abun_df.T.columns)-1):
-        rate_array[:,j] = (glv_abun_df.T.iloc[:,j+1]/glv_abun_df.T.iloc[:,j])-1
-    
-    rate_df = pd.DataFrame(rate_array).fillna(0)
+    print('these are bacteria to keep',bac_to_keep_for_inf)
     
     # Filter for current simulation
-    glv_abun_df = glv_abun_df.iloc[:,bac_to_keep_for_inf]
-    rate_df = rate_df.iloc[bac_to_keep_for_inf,:]
-    init_abun_scaled = init_abun/scal_fac
-    init_abun_scaled = list(init_abun_scaled[bac_to_keep_for_inf])
+    #glv_abun_df = glv_abun_df.iloc[:,bac_to_keep_for_inf]
+    #rate_df = rate_df.iloc[bac_to_keep_for_inf,:]
+    #init_abun_scaled = init_abun/scal_fac
+    init_abun = list(init_abun[bac_to_keep_for_inf])
     correct_model_name_order_current_sim = list(np.array(correct_model_name_order)[bac_to_keep_for_inf])
     models_list_current_sim = list(np.array(models_list)[bac_to_keep_for_inf])
-    glv_abun_df = glv_abun_df/scal_fac
+    #glv_abun_df = glv_abun_df/scal_fac
     
     # Set media conditions for each model
-    for j in range(0, len(models_list_current_sim)):
-        test_media = make_media(models_list_current_sim[j], defined_media_df)
-        models_list_current_sim[j].medium = test_media
-        print(models_list_current_sim[j].slim_optimize())
-        print(models_list_current_sim[j].medium)
-        print(correct_model_name_order_current_sim[j])
+    #for j in range(0, len(models_list_current_sim)):
+        #test_media = make_media(models_list_current_sim[j], defined_media_df)
+        #models_list_current_sim[j].medium = test_media
+        #print(models_list_current_sim[j].slim_optimize())
+        #print(models_list_current_sim[j].medium)
+        #print(correct_model_name_order_current_sim[j])
     
     # Verify model order
     filt_columns_list_names = m2_init_abun.iloc[:,bac_to_keep_for_inf].columns.to_list()
@@ -1178,34 +978,37 @@ def run_simulations(i):
         print('This is the order given: ', checking_order_list)
         raise ValueError(f"Model order mismatch for simulation {i}")
     
-    # Run FBA simulation
-    met_pool_over_time, model_abun_dict, mets_used_for_constraint = static_dfba(
-        list_model_names=correct_model_name_order_current_sim,
-        list_models=models_list_current_sim,
-        initial_abundance=init_abun_scaled,
-        total_sim_time=t_steps,
-        num_t_steps=t_steps,
-        glv_out=np.array(glv_abun_df),
-        glv_params=None,
-        environ_cond=defined_media_df,
-        pfba=False,
-        MDSINE_rates=rate_df,
-        Diet=pd.DataFrame(),
-        output_file_path=plot_dir_path_spec_exp,
-        flux_sampling=False,
-        host=None,
-        random_constraints='No',
-        AGORA_models='yes',
-	    calc_neg_consumption='no',
-        stable_t_points = None
-    )
+    ##################################
+    ### Here I need to call COMETS ###
+    ##################################
 
-    met_save = plot_dir_path_spec_exp + '/met_pool.npy'
-    abun_save = plot_dir_path_spec_exp + '/abun_save.npy'
 
-    np.save(met_save, met_pool_over_time)
-    np.save(abun_save, model_abun_dict)
-    
+    final_biomass, final_mets = COMETS_call(models_list_current_sim, init_abun, defined_media_comets, plot_dir_path_spec_exp)
+
+    print('##########################')
+    print('This is final biomass',final_biomass)
+    print('##########################')
+    print('This is final mets',final_mets)
+
+        ### create bac abundances
+    bac_final_predictions = np.zeros(25)
+    bac_final_predictions[bac_to_keep_for_inf] = final_biomass.values
+
+    print('##########################')
+    print('This is final biomass',final_biomass)
+
+    final_mets_transform = final_mets.set_index('metabolite').T
+    print('This is final mets transform', final_mets_transform)
+
+
+    return {
+        'sim_idx': i,
+        'bac_predictions': bac_final_predictions,
+        'met_predictions': final_mets_transform,
+        'spec_exp_name': spec_exp_name
+    }
+
+'''
     # Extract biomass data
     FBA_biomass = np.zeros([len(model_abun_dict.keys()), t_steps+1])
     glv_biomass = np.zeros([len(model_abun_dict.keys()), t_steps+1])
@@ -1304,33 +1107,29 @@ def run_simulations(i):
             met_final = met_pool_over_time_df_melt_filt_final_t_pt.set_index('Metabolite')['Concentration']
         else:
             met_final = pd.Series(dtype=float)
-    '''
-    if len(mets_present) > 0:
-        met_pool_over_time_df_melt_filt = met_pool_over_time_df_melt.set_index('Metabolite').loc[mets_present].reset_index()
-        met_pool_over_time_df_melt_filt_final_t_pt = met_pool_over_time_df_melt_filt[met_pool_over_time_df_melt_filt['Time'] == t_steps]
-        met_final = met_pool_over_time_df_melt_filt_final_t_pt.set_index('Metabolite')['Concentration']
-    else:
-        met_final = pd.Series(dtype=float)
-    '''
-    return {
-        'sim_idx': i,
-        'bac_predictions': bac_final_predictions,
-        'met_predictions': met_final,
-        'spec_exp_name': spec_exp_name
-    }
+    #
+    #if len(mets_present) > 0:
+    #    met_pool_over_time_df_melt_filt = met_pool_over_time_df_melt.set_index('Metabolite').loc[mets_present].reset_index()
+    #    met_pool_over_time_df_melt_filt_final_t_pt = met_pool_over_time_df_melt_filt[met_pool_over_time_df_melt_filt['Time'] == t_steps]
+    #    met_final = met_pool_over_time_df_melt_filt_final_t_pt.set_index('Metabolite')['Concentration']
+    #else:
+    #    met_final = pd.Series(dtype=float)
+    
+'''
+
 
 
 ### MAIN EXECUTION - REPLACE YOUR CURRENT joblib.Parallel CALL WITH THIS ###
 
 if __name__ == "__main__":
     # Determine number of workers (leave 1-2 cores free for system)
-    n_jobs = max(1, multiprocessing.cpu_count()) - 2
+    n_jobs = 1#max(1, multiprocessing.cpu_count()) - 2
     
     print(f"Starting {len(m2_init_abun)} simulations using {n_jobs} parallel workers...")
     print(f"Output directory: {plot_dir_path_base}")
     
     # Run parallel simulations with progress bar
-    results = joblib.Parallel(n_jobs=n_jobs, verbose=10)(
+    results = joblib.Parallel(n_jobs=n_jobs, prefer = 'threads')(
         joblib.delayed(run_simulations)(i) 
         for i in tqdm(range(len(m2_init_abun)))
         #for i in tqdm(range(2))
@@ -1338,16 +1137,15 @@ if __name__ == "__main__":
 
     # ---- metabolite column mapping ----
     met_cols_mapping = {
-        "EX_but(e)": "Butyrate",
-        "EX_ac(e)": "Acetate",
-        "EX_lac_L(e)": "Lactate",
-        "EX_succ(e)": "Succinate"
+        "but[e]": "Butyrate",
+        "ac[e]": "Acetate",
+        "lac_L[e]": "Lactate",
+        "succ[e]": "Succinate"
     }
         # Ensure metabolite prediction columns exist
     for col_name in met_cols_mapping.values():
         if col_name not in met_abun_predict_final_df.columns:
             met_abun_predict_final_df[col_name] = 0.0
-
 
 
     # Aggregate results into the final DataFrames
@@ -1378,11 +1176,12 @@ if __name__ == "__main__":
         
         # Store metabolite predictions
         met_pred = result['met_predictions']
+        print('this is met_pred', met_pred)
         met_cols_mapping = {
-            'EX_but(e)': 'EX_but(e)',
-            'EX_ac(e)': 'EX_ac(e)', 
-            'EX_lac_L(e)': 'EX_lac_L(e)',
-            'EX_succ(e)': 'EX_succ(e)'
+            "but[e]": "Butyrate",
+            "ac[e]": "Acetate",
+            "lac_L[e]": "Lactate",
+            "succ[e]": "Succinate"
         }
         if multi_t_pt_dataset == 'yes':
             exp_name = result['spec_exp_name']
@@ -1412,8 +1211,13 @@ if __name__ == "__main__":
         else:
             # Single timepoint - met_pred is a Series with final values
             for bigg_id, col_name in met_cols_mapping.items():
-                if bigg_id in met_pred.index:
-                    met_abun_predict_final_df.loc[result['spec_exp_name'], col_name] = met_pred[bigg_id]
+                if bigg_id in met_pred.columns:
+                    print(bigg_id)
+                    print('this should be met value',met_pred[bigg_id])
+                    met_abun_predict_final_df.loc[result['spec_exp_name'], bigg_id] = met_pred[bigg_id].values
+
+
+
 
 
     # Save final results

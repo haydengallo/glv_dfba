@@ -486,7 +486,7 @@ for key in subject_dict.keys():
     rc_diet_MS_convert = rc_diet_MS_convert[['compounds', 'maxflux']]
     rc_diet_MS_convert.columns = ['reaction', 'fluxValue']
 
-    ### manually add 18 minimal metabolites to the RC_diet
+    ### manually add 19 minimal metabolites to the RC_diet
 
     mets_to_add = ['cpd00001','cpd00009','cpd00013','cpd00030','cpd00034','cpd00048','cpd00058','cpd00063','cpd00067','cpd00099','cpd00149','cpd00205','cpd00244','cpd00254','cpd00971','cpd10515','cpd10516','cpd11574','cpd00028']
     flux = [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
