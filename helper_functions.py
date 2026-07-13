@@ -559,13 +559,19 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
             #print(fba_obj_val)
             if flux_sampling == True and fba_obj_val > 0:
                 #print(fba_obj_val)
-                model_abun_dict[key]['model'].reactions.bio1.lower_bound = 0.95 * fba_obj_val
+                # this is for kbase models
+                #model_abun_dict[key]['model'].reactions.bio1.lower_bound = 0.95 * fba_obj_val
+                # this is for cobra models
+                model_abun_dict[key]['model'].reactions.biomassPan.lower_bound = 0.95 * fba_obj_val
 
                 model_flux_samp = cobra.sampling.sample(model_abun_dict[key]['model'], 1)
 
                 model_flux_samp = model_flux_samp.T
 
-                model_flux_samp = model_flux_samp.filter(regex = 'EX_.*_b|bio', axis = 0)
+                ### this is for kbase models
+                #model_flux_samp = model_flux_samp.filter(regex = 'EX_.*_b|bio', axis = 0)
+                ### this is for AGORA models, pan specifically
+                model_flux_samp = model_flux_samp.filter(regex = 'EX_|bio', axis = 0)
                 #model_flux_samp.reset_index(inplace=True)
 
                 model_flux_samp.columns = ['fluxes']
@@ -580,7 +586,10 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                 fba_obj_val = filtered['fluxes'].iloc[0]
 
                 ### need to reset the lower bound back to zero afterwards 
-                model_abun_dict[key]['model'].reactions.bio1.lower_bound = 0
+                ### this is for kbase models
+                #model_abun_dict[key]['model'].reactions.bio1.lower_bound = 0
+                ### this is for agora models
+                model_abun_dict[key]['model'].reactions.biomassPan.lower_bound = 0
 
 
 
@@ -916,13 +925,20 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
 
                 if flux_sampling == True and fba_obj_val > 0:
                     #print(fba_obj_val)
-                    model_abun_dict[key]['model'].reactions.bio1.lower_bound = 0.95 * fba_obj_val
+                    # this is for kbase models
+                    #model_abun_dict[key]['model'].reactions.bio1.lower_bound = 0.95 * fba_obj_val
+                    # this is for cobra models
+                    model_abun_dict[key]['model'].reactions.biomassPan.lower_bound = 0.95 * fba_obj_val
 
                     model_flux_samp = cobra.sampling.sample(model_abun_dict[key]['model'], 1)
 
                     model_flux_samp = model_flux_samp.T
 
-                    model_flux_samp = model_flux_samp.filter(regex = 'EX_.*_b|bio', axis = 0)
+                    ### this is for kbase models
+                    #model_flux_samp = model_flux_samp.filter(regex = 'EX_.*_b|bio', axis = 0)
+                    ### this is for AGORA models, pan specifically
+                    model_flux_samp = model_flux_samp.filter(regex = 'EX_|bio', axis = 0)
+                    #model_flux_samp.reset_index(inplace=True)
                     #model_flux_samp.reset_index(inplace=True)
 
                     model_flux_samp.columns = ['fluxes']
@@ -937,7 +953,10 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                     fba_obj_val = filtered['fluxes'].iloc[0]
 
                     ### need to reset the lower bound back to zero afterwards 
-                    model_abun_dict[key]['model'].reactions.bio1.lower_bound = 0
+                    ### this is for kbase models
+                    #model_abun_dict[key]['model'].reactions.bio1.lower_bound = 0
+                    ### this is for agora models
+                    model_abun_dict[key]['model'].reactions.biomassPan.lower_bound = 0
 
                 ### Don't want to update abundance until i know it's correct and fluxes don't go negative ###
                 

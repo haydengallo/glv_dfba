@@ -77,9 +77,9 @@ cobra_models_dir_path = data_dir + '/panGenusModels_Venturelli_corrected'
 scal_fac = 1
 t_steps = 48
 
-test_num = 50
+test_num = 2
 ### are we using single timepoint dataset or multi?
-multi_t_pt_dataset = 'yes'
+multi_t_pt_dataset = 'no'
 
 if multi_t_pt_dataset == 'yes':
     #test_name = 'panGenusmodel_sims_multi_t_pt_forward_sim'
@@ -88,14 +88,16 @@ if multi_t_pt_dataset == 'yes':
     #test_name = 'Strainmodel_sims_multi_t_pt'
     
 else:
-    test_name = 'panGenusmodel_sims'
+    #test_name = 'panGenusmodel_sims'
     #test_name = 'panSpeciesmodel_sims'
-
+    ## adding this for flux sampling etc
+    test_name = 'panGenusmodel_flux_samp_sims'
 
 
 
  ### Simulation notes
-notes = 'just testing again with the 1.0 growth rate metabolites and long sim'
+notes = 'nothing changed from final sims in original paper, here now testing to make sure the flux sampling works with the in vitro sims and then will transfer to HPC for batching '
+#notes = 'just testing again with the 1.0 growth rate metabolites and long sim, nothing else changed, here now testing to make sure the flux sampling works with the in vitro sims and then will transfer to HPC for batching '
 # notes = 'doing ivp static dataset with numerical tolerance fix now, think now i can get around numerical tolerance, testing to see if i can get around numerical tolerance issues etc, think i have been able to save bacterial abundance at everytime point so latent trajectory with longitudinal dataset,trying to get better save output for bacterial abun in mutli timpepoint sims, using forward sim for longitudainl dataset instead of interpolated values, doing forward simulations using settings from test_44 of long dataset, so regular fba with some oxygen, no scaling, oxygen back to 0.1, just adding compoujnds from relaxed fba at 0.1, so everything additional wasnt in original media, remoevd lines that dont allow uptake of butyrate and succiante, regular fba, Adding relaxed fba compounds when growth rate is 0.3 which is consistent with MICOM'
 #notes = 'fba now,for some reason seems in cobrapy need cgly for a caccae to grow, pan genus models, adding compounds required for each model to reach growth rate of 1, these compounds added at 1.0, regular fba, extra oxygen at 10'
 #notes = 'had to redo full sims b/c of miss ordering in index of glv params from mdsine not aligning with allspecies master species order list, still correcting indexing issues, think this sim will be corrected, hopefully'
@@ -1192,7 +1194,7 @@ def run_simulations(i):
         MDSINE_rates=rate_df,
         Diet=pd.DataFrame(),
         output_file_path=plot_dir_path_spec_exp,
-        flux_sampling=False,
+        flux_sampling=True,
         host=None,
         random_constraints='No',
         AGORA_models='yes',
@@ -1324,7 +1326,7 @@ def run_simulations(i):
 
 if __name__ == "__main__":
     # Determine number of workers (leave 1-2 cores free for system)
-    n_jobs = max(1, multiprocessing.cpu_count()) - 2
+    n_jobs = 1#max(1, multiprocessing.cpu_count()) - 2
     
     print(f"Starting {len(m2_init_abun)} simulations using {n_jobs} parallel workers...")
     print(f"Output directory: {plot_dir_path_base}")
