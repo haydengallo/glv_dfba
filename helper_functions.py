@@ -506,9 +506,9 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
             #logging.info(f'fba: {sol_fba}')
 
             # use next line when using kbase models
-            #sol_fba_fluxes = sol_fba.fluxes.to_frame().filter(regex='EX_.*_b$|bio', axis = 0)
+            sol_fba_fluxes = sol_fba.fluxes.to_frame().filter(regex='EX_.*_b$|bio', axis = 0)
             # use this next line when using agora models
-            sol_fba_fluxes = sol_fba.fluxes.to_frame().filter(regex='EX_|bio', axis = 0)
+            #sol_fba_fluxes = sol_fba.fluxes.to_frame().filter(regex='EX_|bio', axis = 0)
 
             # secreted should have negative sign to align with normal FBA
             test_secrete = sol_fba_fluxes[sol_fba_fluxes['fluxes'] > 0]
@@ -542,16 +542,16 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
             logging.info(f'uptake: {temp_uptake}')
 
             ### use next line if using AGORA models
-            if fba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound:
+            #if fba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound:
             #if fba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound:
             ### use next line if using Kbase models
-            #if fba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = 'bio1').upper_bound:
+            if fba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = 'bio1').upper_bound:
                 #print('Upper bound not reached:')
                 #print('Upper_bound:',model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound)
                 #print('Obj val', pfba_obj_val)
                 logging.warning(f'Upper bound not reached:')
-                #logging.warning(f'Upper_bound: {model_abun_dict[key]['model'].reactions.get_by_id(id = 'bio1').upper_bound}')
-                logging.warning(f'Upper_bound: {model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound}')
+                logging.warning(f'Upper_bound: {model_abun_dict[key]['model'].reactions.get_by_id(id = 'bio1').upper_bound}')
+                #logging.warning(f'Upper_bound: {model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound}')
                 #logging.warning(f'Upper_bound: {model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound}')
                 logging.warning(f'Obj val: {fba_obj_val}')
 
@@ -900,9 +900,9 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                 sol_fba = model_abun_dict[key]['model'].optimize()
 
                  # use next line when using kbase models
-                #sol_fba_fluxes = sol_fba.fluxes.to_frame().filter(regex='EX_.*_b$|bio', axis = 0)
+                sol_fba_fluxes = sol_fba.fluxes.to_frame().filter(regex='EX_.*_b$|bio', axis = 0)
                 # use this next line when using agora models
-                sol_fba_fluxes = sol_fba.fluxes.to_frame().filter(regex='EX_|bio', axis = 0)
+                #sol_fba_fluxes = sol_fba.fluxes.to_frame().filter(regex='EX_|bio', axis = 0)
 
                 # secreted should have negative sign to align with normal FBA
                 test_secrete = sol_fba_fluxes[sol_fba_fluxes['fluxes'] > 0]
@@ -1474,7 +1474,7 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
             change_biomass_bounds(model_abun_dict=model_abun_dict, glv_params=glv_params, t_pt=i)
 
 
-        if stable_t_points == None:
+        if len(stable_t_points) == 0:#None
             logging.info(f"Not performing stability analysis here")
             this_is_stable_t = None
         elif i in stable_t_points:
@@ -1637,10 +1637,11 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
 ####################################
 
 
-def stability_analysis_main(abun_df, int_matrix, growth_rates, abun_tol, prob_tol):
+def stability_analysis_main(abun_df, int_matrix, growth_rates, abun_tol, prob_tol, perturbations, num_abx_tpoints):
 
-    ### calculate the number of samples and the number of timepoints from the input abun_averaged_smoothed_abun matrix
+    ### calculate the number of species and the number of timepoints from the input abun_averaged_smoothed_abun matrix
 
+    num_species = abun_df.shape[0]
     n_timepoints = abun_df.shape[1]
     n_samples = int_matrix.shape[0]
 
@@ -1653,53 +1654,61 @@ def stability_analysis_main(abun_df, int_matrix, growth_rates, abun_tol, prob_to
 
     ### based on filtering criteria remove very small species
 
+    #abun_array[abun_array < abun_tol] = 0
+    rel_abun_l2 = rel_abun.copy()
     rel_abun[rel_abun < abun_tol] = 0
-    rel_abun[rel_abun > abun_tol] = 1
 
     for t in range(n_timepoints):
-        #start_profile = abun_array_filt[t]
-        #end_profile = abun_array_filt[t]  # assume same for simplicity
 
-        start_profile = rel_abun[t]
-        end_profile = rel_abun[t]  # assume same for simplicity
+        if t < num_abx_tpoints:
+            u_t = 1 # this mean perturbation is being applied (i.e. antibiotics occur for the first 3 days of the experiment)
+        else: u_t = 0
+        #print(f'This is u_t', u_t)
+        ### here assess the velocity of the systems movement, dx/dt close to 0 (e.g. small norm between t and t-1) means system in fixed point neighborhood, this is first bar to pass
         
-        stable_count = 0
-        for i in range(n_samples):
+        if t == 0:
+            continue
+
+        l2_norm = np.linalg.norm(rel_abun_l2[t] - rel_abun_l2[t-1])
+        
+
+        if l2_norm > .01:
+            continue
+        else:
+
+            system_profile = abun_array[t]
+            rel_abun_profile = rel_abun[t]
+
             
-            alpha = growth_rates[i]
-            Beta = int_matrix[i]
-            eigvals = linstability_get_steadystates_and_eigenvalues(end_profile, start_profile, Beta, alpha)
-            if np.all(np.real(eigvals) < 0):
-                stable_count += 1
-        
-        stability_prob[t] = stable_count / n_samples
-        stable_t_points = np.where(stability_prob > prob_tol)[0]
+            stable_count = 0
+            for i in range(n_samples):
+                alpha = growth_rates[i] + (perturbations[i] * u_t)
+                Beta = int_matrix[i]
+                eigvals = linstability_get_steadystates_and_eigenvalues(system_profile, rel_abun_profile, Beta, alpha)
+                
+                if np.all(np.real(eigvals) < 0):
+                    stable_count += 1
+            
+            stability_prob[t] = stable_count / n_samples
+    stable_t_points = np.where(stability_prob > prob_tol)[0]
 
 
     return stability_prob, stable_t_points
 
 
 
-def linstability_get_steadystates_and_eigenvalues(end_profile, start_profile, Beta, alpha):
-    end_profile   = np.asarray(end_profile).astype(bool)
-    start_profile = np.asarray(start_profile).astype(bool)
+
+def linstability_get_steadystates_and_eigenvalues(system_profile, rel_abun_profile, Beta, alpha):
+
+    rel_abun_profile = np.asarray(rel_abun_profile).astype(bool)
     Beta  = np.asarray(Beta, dtype=float)
     alpha = np.asarray(alpha, dtype=float)
+    
+    Beta_1  = Beta[np.ix_(rel_abun_profile, rel_abun_profile)]
+    alpha_1 = alpha[rel_abun_profile]
 
-    Beta_1  = Beta[np.ix_(start_profile, start_profile)]
-    alpha_1 = alpha[start_profile]
-    in_both = start_profile & end_profile
-    Beta_2  = Beta[np.ix_(in_both, in_both)]
-    alpha_2 = alpha[in_both]
+    fss2 = system_profile[rel_abun_profile]
 
-    fss = np.zeros_like(alpha)
-    try:
-        if Beta_2.size > 0:
-            fss[in_both] = -np.linalg.solve(Beta_2, alpha_2)
-    except np.linalg.LinAlgError:
-        pass
-
-    fss2 = fss[start_profile]
     m = Beta_1.shape[0]
     Jacobian_matrix = np.zeros((m, m), dtype=float)
     row_dot = Beta_1 @ fss2
@@ -1715,6 +1724,7 @@ def linstability_get_steadystates_and_eigenvalues(end_profile, start_profile, Be
     except np.linalg.LinAlgError:
         eigvals = np.array([np.nan])
     return eigvals
+
 
 
 
