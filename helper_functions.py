@@ -507,7 +507,7 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
 
        
             # use this next line when using agora models
-            if AGORA_models = 'yes':
+            if AGORA_models == 'yes':
                 sol_fba_fluxes = sol_fba.fluxes.to_frame().filter(regex='EX_|bio', axis = 0)
             
             else:
@@ -546,7 +546,7 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
             logging.info(f'uptake: {temp_uptake}')
 
             ### use next line if using AGORA models
-            if fba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound and AGORA_models = 'yes':
+            if fba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound and AGORA_models == 'yes':
                 logging.warning(f'Upper bound not reached:')
                 logging.warning(f'Upper_bound: {model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound}')
                 logging.warning(f'Obj val: {fba_obj_val}')
@@ -567,7 +567,7 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
             if flux_sampling == True and fba_obj_val > 0:
                 #print(fba_obj_val)
 
-                if AGORA_models = 'yes':
+                if AGORA_models == 'yes':
                     # this is for cobra models
                     model_abun_dict[key]['model'].reactions.biomassPan.lower_bound = 0.99 * fba_obj_val
                     model_flux_samp = cobra.sampling.sample(model_abun_dict[key]['model'], 1)
@@ -598,7 +598,7 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                 fba_obj_val = filtered['fluxes'].iloc[0]
 
                 ### need to reset the lower bound back to zero afterwards 
-                if AGORA_models = 'yes':
+                if AGORA_models == 'yes':
                     ### this is for agora models
                     model_abun_dict[key]['model'].reactions.biomassPan.lower_bound = 0
                 else:
@@ -849,7 +849,7 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                 #print('Print medium used for optimization:',model_abun_dict[key]['model'].medium)
                 ## seem to have some infeasible solutions, unclear why 
                 # put fluxes in df for manipulation
-                if AGORA_models = 'yes':
+                if AGORA_models == 'yes':
                     # use this with AGORA models
                     temp_pfba_df = temp_pfba.to_frame().filter(regex='EX_|bio', axis = 0)
                 else:
@@ -916,7 +916,7 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
 
                 sol_fba = model_abun_dict[key]['model'].optimize()
 
-                if AGORA_models = 'yes':
+                if AGORA_models == 'yes':
                     # use this next line when using agora models
                     sol_fba_fluxes = sol_fba.fluxes.to_frame().filter(regex='EX_|bio', axis = 0)
                 else:
@@ -946,7 +946,7 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                 if flux_sampling == True and fba_obj_val > 0:
 
 
-                    if AGORA_models = 'yes':
+                    if AGORA_models == 'yes':
                         # this is for cobra models
                         model_abun_dict[key]['model'].reactions.biomassPan.lower_bound = 0.99 * fba_obj_val
                         model_flux_samp = cobra.sampling.sample(model_abun_dict[key]['model'], 1)
@@ -973,7 +973,7 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                     fba_obj_val = filtered['fluxes'].iloc[0]
 
                     ### need to reset the lower bound back to zero afterwards 
-                    if AGORA_models = 'yes':
+                    if AGORA_models == 'yes':
                         ### this is for agora models
                         model_abun_dict[key]['model'].reactions.biomassPan.lower_bound = 0
                     else:
