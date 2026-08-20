@@ -1,3 +1,9 @@
+### Hayden Gallo
+### Bucci Lab 
+### Flux sampling for in vivo data on hpc 
+### 8/20/2026
+
+
 import numpy as np
 import cobra
 import pandas as pd
@@ -15,8 +21,33 @@ from scipy.stats import pearsonr, spearmanr
 
 from helper_functions import *
 
+import argparse
 
 start_time = datetime.now()
+
+os.environ["GRB_LICENSE_FILE"] = "/share/pkg/gurobi/11.0.2/lib/gurobi.lic"
+################################
+### Manual Parameters to set ###
+################################
+
+#################################################################################################################################################################
+### this is used to surpress all logging from loading in the kbase models with cobra, such that they don't get added to the glv_fba log file and overcrowd it ### 
+logging.getLogger("cobra").setLevel(logging.ERROR)
+#################################################################################################################################################################
+
+# Create an argument parser
+parser = argparse.ArgumentParser(description='Process job parameters and save path.')
+parser.add_argument('--sim_num', type=str, required=True, help='sim num')
+parser.add_argument('--test_num', type=str, required=True, help='test num')
+
+# Parse the arguments
+args = parser.parse_args()
+
+# Convert the comma-separated string back into a NumPy array
+sim_num = int(np.fromstring(args.sim_num, sep=',')[0])
+print(sim_num)
+test_num = int(np.fromstring(args.test_num, sep = ',')[0])
+print(test_num)
 
 
 ################################
@@ -37,7 +68,7 @@ for key in subject_dict.keys():
     ### subject to predict, subject with metabolomics data
     subject_to_predict = subject_dict[key]
     ### Set test num
-    test_num = 17
+    #test_num = 17
     ### set time scaler
     time_scaler = 24
     ### Scaling factor
@@ -59,8 +90,8 @@ for key in subject_dict.keys():
 
     #plot_dir_path = '/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun/MDSINE_vs_Exp_plots_' + output_folder + '/test_' + str(test_num) + '/Subject_' + str(subject_to_plot)
     # plot_dir_path = '/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun/new_constraints_test_MDSINE_vs_Exp_plots_' + output_folder + '/test_' + str(test_num) + '/Subject_' + str(subject_to_plot)
-    plot_dir_path = '/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun/more_final_tests_MDSINE_vs_Exp_plots_' + output_folder + '/test_' + str(test_num) + '/Subject_' + str(subject_to_plot)
-
+    #plot_dir_path = '/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun/more_final_tests_MDSINE_vs_Exp_plots_' + output_folder + '/test_' + str(test_num) + '/Subject_' + str(subject_to_plot)
+    plot_dir_path = '/home/hayden.gallo-umw/dyscomemo_in_vivo_flux_samp/Test_' + str(test_num) + '/sim_' + str(sim_num) + '/Subject_' + str(subject_to_plot)
 
     plot_dir = Path(plot_dir_path)
     os.makedirs(plot_dir, exist_ok=True)
@@ -68,7 +99,10 @@ for key in subject_dict.keys():
 
     ### Load in raw data passed to MDSINE2 ###
 
-    processed_data = Path('/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun')
+    #processed_data = Path('/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun')
+
+    # data path on hpc
+    processed_data = Path('/home/hayden.gallo-umw/MDSINE_Flux_Sampling')
 
     tsv_files = sorted(processed_data.glob('*.tsv'))
     tsv_files = {f.stem : f for f in tsv_files}
@@ -81,14 +115,16 @@ for key in subject_dict.keys():
 
     ### Load in metabolomics data 
 
-    metabolomics_data = pd.read_csv('/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/raw_data/complete_mapping_metabolomics.csv', index_col=0)
+    #metabolomics_data = pd.read_csv('/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/raw_data/complete_mapping_metabolomics.csv', index_col=0)
+    metabolomics_data = pd.read_csv('/home/hayden.gallo-umw/MDSINE_Flux_Sampling/complete_mapping_metabolomics.csv', index_col=0)
     ## fill NAs w/ zero 
     metabolomics_data = metabolomics_data.fillna(0)
 
 
     ### load in metabolomics metadata
 
-    metabolomics_metadata_raw = pd.read_csv('/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/raw_data/metabolomics_meta.csv', index_col=0)
+    #metabolomics_metadata_raw = pd.read_csv('/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/raw_data/metabolomics_meta.csv', index_col=0)
+    metabolomics_metadata_raw = pd.read_csv('/home/hayden.gallo-umw/MDSINE_Flux_Sampling/metabolomics_meta.csv', index_col=0)
     # filtered metabolomics metadata for subject trying to predict's initial timepoint
     metabolomics_metadata = metabolomics_metadata_raw.copy()
     metabolomics_metadata = metabolomics_metadata[(metabolomics_metadata['Mouse'] == float(subject_to_predict)) & (metabolomics_metadata['Rec_day_adj'] == -3)]
@@ -96,15 +132,16 @@ for key in subject_dict.keys():
 
 
     ### load in sample metadata 
-    sample_metadata = pd.read_csv('/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun/metadata.tsv', sep='\t',index_col=0)
-
-
+    #sample_metadata = pd.read_csv('/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun/metadata.tsv', sep='\t',index_col=0)
+    sample_metadata = pd.read_csv('/home/hayden.gallo-umw/MDSINE_Flux_Sampling/metadata.tsv', sep='\t',index_col=0)
     ### load in refseq to agora dataframe
-    refseq_to_agora_df = pd.read_csv('/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/refseq_to_agora_update_07_07_25.csv', index_col=0)
+    refseq_to_agora_df = pd.read_csv('/home/hayden.gallo-umw/MDSINE_Flux_Sampling/refseq_to_agora_update_07_07_25.csv', index_col=0)
+    #refseq_to_agora_df = pd.read_csv('/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/refseq_to_agora_update_07_07_25.csv', index_col=0)
 
     
     ### here load in the latent trajectory for the filtered hourly resolution with post smoothing
-    MDSINE_filter_path = '/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun/filtering_hourly_resolution/Subject_' + str(subject_to_plot) + '/mean_smoothed.tsv'
+    #MDSINE_filter_path = '/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun/filtering_hourly_resolution/Subject_' + str(subject_to_plot) + '/mean_smoothed.tsv'
+    MDSINE_filter_path = '/home/hayden.gallo-umw/MDSINE_Flux_Sampling/Subject_' + str(subject_to_plot) + '/mean_smoothed.tsv'
     bi_hourly_resolution_latent_traj = pd.read_csv(MDSINE_filter_path, delimiter='\t', index_col=0)
     bi_hourly_resolution_latent_traj
 
@@ -127,7 +164,8 @@ for key in subject_dict.keys():
     rc_diet_MS_convert = rc_diet_data.copy()
 
     ### open json that contains the bigg to modelseed translation
-    with open('/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/raw_data/BiGG_to_MSID.json') as f:
+    #with open('/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/raw_data/BiGG_to_MSID.json') as f:
+    with open('/home/hayden.gallo-umw/MDSINE_Flux_Sampling/BiGG_to_MSID.json') as f:
         bigg_to_modelseed = json.load(f)
 
     ### convert over from bigg to modelseed the mets in the rc diet
@@ -177,7 +215,8 @@ for key in subject_dict.keys():
 
     ### load the cobra models into memory
 
-    cobra_models_dir = Path('/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun/test_draft_reconstructions_07_08_25')
+    #cobra_models_dir = Path('/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun/test_draft_reconstructions_07_08_25')
+    cobra_models_dir = Path('/home/hayden.gallo-umw/MDSINE_Flux_Sampling/test_draft_reconstructions_07_08_25')
 
     # Make the data and validation Study objects
     cobra_models = sorted(cobra_models_dir.glob('*.sbml'))
@@ -288,15 +327,18 @@ for key in subject_dict.keys():
 
 
     ### Host dictionary with host GEM and bigg to modelseed and modelseed to bigg translation dicts 
-    with open('/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/raw_data/modelseed_to_bigg.json') as f:
+    #with open('/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/raw_data/modelseed_to_bigg.json') as f:
+    with open('/home/hayden.gallo-umw/MDSINE_Flux_Sampling/modelseed_to_bigg.json') as f:
         modelseed_to_bigg = json.load(f)
 
-    mouse_model_bigg = cobra.io.read_sbml_model('/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun/iMM1415.xml')
+    #mouse_model_bigg = cobra.io.read_sbml_model('/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun/iMM1415.xml')
+    mouse_model_bigg = cobra.io.read_sbml_model('/home/hayden.gallo-umw/MDSINE_Flux_Sampling/iMM1415.xml')
 
     host_dict = {'host_model':mouse_model_bigg, 'bigg_to_modelseed':bigg_to_modelseed, 'modelseed_to_bigg': modelseed_to_bigg}
 
 
-    int_met_values_file_name = '/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun/subject_' + str(subject_to_predict) + '_interpolated_met_data.csv'
+    #int_met_values_file_name = '/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun/subject_' + str(subject_to_predict) + '_interpolated_met_data.csv'
+    int_met_values_file_name = '/home/hayden.gallo-umw/MDSINE_Flux_Sampling/subject_' + str(subject_to_predict) + '_interpolated_met_data.csv'
     interpolated_met_values = pd.read_csv(int_met_values_file_name, index_col=0)
 
 

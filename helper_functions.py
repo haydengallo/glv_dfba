@@ -297,12 +297,12 @@ def opt_host_model(host_model, met_pool_df, translation_dict_bigg_to_modelseed, 
 
     #
 
-    test_secrete = sol_fba_fluxes[sol_fba_fluxes['fluxes'] > 0]
+    test_secrete = sol_fba_fluxes[sol_fba_fluxes['fluxes'] > 0].copy()
     #print('Test_secrete',test_secrete)
 
     # filter out fluxes that are taken up
     # uptake should have positive sign to align with normal FBA
-    test_uptake = sol_fba_fluxes[sol_fba_fluxes['fluxes'] < 0]
+    test_uptake = sol_fba_fluxes[sol_fba_fluxes['fluxes'] < 0].copy()
 
     ### maybe here need to multiply by the weight of the mouse? 
 
@@ -1630,6 +1630,44 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
         mets_used_for_constraint = 0
     
     return met_pool_over_time, model_abun_dict, mets_used_for_constraint
+
+
+
+def bigg_to_agora_exchange_ids(bigg_ids):
+    """
+    Convert a list of BiGG metabolite IDs to AGORA-style COBRApy exchange IDs.
+
+    Handles known mismatches between BiGG names and AGORA metabolite IDs.
+
+    Parameters:
+    - bigg_ids: list of BiGG metabolite names (e.g. ['glc__D', '12_Ketolithocholic acid'])
+
+    Returns:
+    - List of AGORA-style exchange reaction IDs: ['EX_glc_D(e)', 'EX_12kltchca(e)', ...]
+    """
+
+    # Dictionary of known non-standard mappings (keys normalized)
+    special_cases = {
+        '12_ketolithocholic_acid': '12kltchca',
+        'cis_oleic_acid': 'ocdca',
+        'meso_erythritol': 'erythritol',
+        'hc02191': 'hc02191',         # keep as-is but handle case
+        'c10164': 'c10164',           # same
+        'lnlacp': 'lnlcacp',          # typo fix? depends on your model
+        '4hpro_lt': '4hprolt',
+    }
+
+    exchange_ids = []
+    for met in bigg_ids:
+        # Normalize: replace '__' with '_', convert to lowercase, and replace spaces
+        norm_met = met.replace('__', '_').replace(' ', '_').lower()
+
+        # Use special mapping if present
+        agora_id = special_cases.get(norm_met, norm_met)
+
+        exchange_ids.append(f'EX_{agora_id}(e)')
+
+    return exchange_ids
 
 
 ####################################
