@@ -546,13 +546,13 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
             logging.info(f'uptake: {temp_uptake}')
 
             ### use next line if using AGORA models
-            if fba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound and AGORA_models == 'yes':
+            if AGORA_models == 'yes' and fba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound:
                 logging.warning(f'Upper bound not reached:')
                 logging.warning(f'Upper_bound: {model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound}')
                 logging.warning(f'Obj val: {fba_obj_val}')
             #if fba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound:
             ### use next line if using Kbase models
-            if fba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = 'bio1').upper_bound and AGORA_models != 'yes':
+            if AGORA_models != 'yes' and fba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = 'bio1').upper_bound:
                 #print('Upper bound not reached:')
                 #print('Upper_bound:',model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound)
                 #print('Obj val', pfba_obj_val)
