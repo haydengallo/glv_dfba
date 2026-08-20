@@ -30,7 +30,6 @@ from pymc.ode import DifferentialEquation
 from pytensor.compile.ops import as_op
 import arviz as az
 
-import time
 import joblib 
 import multiprocessing
 from scipy.stats import truncnorm
@@ -79,7 +78,7 @@ cobra_models_dir_path = data_dir + '/data_input/panGenusModels_Venturelli_correc
 scal_fac = 1
 t_steps = 48
 
-test_num = 2
+test_num = 12
 ### are we using single timepoint dataset or multi?
 multi_t_pt_dataset = 'no'
 
@@ -97,7 +96,7 @@ else:
 
 
  ### Simulation notes
-notes = 'just testing again with the 1.0 growth rate metabolites and long sim'
+notes = 'just testing again with the 1.0 growth rate metabolites and long sim going to batch a full round of sims, not plotting, not saving abun or plot npy and testing being able to batch multiple rounds of sims and having things save in correct directories, testing taking 100 samples and then the mean of said samples'
 # notes = 'doing ivp static dataset with numerical tolerance fix now, think now i can get around numerical tolerance, testing to see if i can get around numerical tolerance issues etc, think i have been able to save bacterial abundance at everytime point so latent trajectory with longitudinal dataset,trying to get better save output for bacterial abun in mutli timpepoint sims, using forward sim for longitudainl dataset instead of interpolated values, doing forward simulations using settings from test_44 of long dataset, so regular fba with some oxygen, no scaling, oxygen back to 0.1, just adding compoujnds from relaxed fba at 0.1, so everything additional wasnt in original media, remoevd lines that dont allow uptake of butyrate and succiante, regular fba, Adding relaxed fba compounds when growth rate is 0.3 which is consistent with MICOM'
 #notes = 'fba now,for some reason seems in cobrapy need cgly for a caccae to grow, pan genus models, adding compounds required for each model to reach growth rate of 1, these compounds added at 1.0, regular fba, extra oxygen at 10'
 #notes = 'had to redo full sims b/c of miss ordering in index of glv params from mdsine not aligning with allspecies master species order list, still correcting indexing issues, think this sim will be corrected, hopefully'
@@ -1206,11 +1205,11 @@ def run_simulations(i):
         stable_t_points = None
     )
 
-    met_save = plot_dir_path_spec_exp + '/met_pool.npy'
-    abun_save = plot_dir_path_spec_exp + '/abun_save.npy'
+    #met_save = plot_dir_path_spec_exp + '/met_pool.npy'
+    #abun_save = plot_dir_path_spec_exp + '/abun_save.npy'
 
-    np.save(met_save, met_pool_over_time)
-    np.save(abun_save, model_abun_dict)
+    #np.save(met_save, met_pool_over_time)
+    #np.save(abun_save, model_abun_dict)
     
     # Extract biomass data
     FBA_biomass = np.zeros([len(model_abun_dict.keys()), t_steps+1])
@@ -1335,6 +1334,7 @@ if __name__ == "__main__":
     import pickle
     import subprocess
     import textwrap
+    import time as time_library
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -1343,9 +1343,16 @@ if __name__ == "__main__":
              "directly (worker mode). If omitted, submits one LSF job per "
              "experiment in m2_init_abun (submission mode).",
     )
+    parser.add_argument(
+        "--sim-num", type=int, default=1,
+        help="number of simulation batches to run",
+    )
     cli_args = parser.parse_args()
 
-    n_total = 10#len(m2_init_abun)
+    ### here pull in the sim num argument to determine number of batches of sims to run, defaults to 1
+    num_sims = cli_args.sim_num
+
+    n_total = 2#len(m2_init_abun)
 
     if cli_args.sim_idx is not None:
         # ---- Worker mode: run a single simulation ----
@@ -1355,9 +1362,10 @@ if __name__ == "__main__":
 
         spec_exp_name = m2_init_abun.index.to_list()[sim_idx]
         exp_dir = os.path.join(plot_dir_path_base, spec_exp_name)
-        result_path = os.path.join(exp_dir, "result.pkl")
+        result_name = 'sim_'+ str(num_sims) + '_result.pkl'
+        result_path = os.path.join(exp_dir,result_name)
 
-        print(f"Running experiment {spec_exp_name} (idx {sim_idx})")
+        print(f"Running experiment {spec_exp_name} (idx {sim_idx}), (sim batch {num_sims})")
         results = run_simulations(sim_idx)
 
         os.makedirs(exp_dir, exist_ok=True)
@@ -1368,65 +1376,61 @@ if __name__ == "__main__":
 
     else:
         # ---- Submission mode: batch out one LSF job per experiment ----
-        this_script_path = os.path.abspath(__file__)
-
-        test_num = 1
-
-        #output_dir = "/home/hayden.gallo-umw/job_output/out_logs/Venturelli_in_vitro_flux_sampling/Test_" + str(test_num)
-        #os.makedirs(output_dir, exist_ok=True)
-        #error_dir = "/home/hayden.gallo-umw/job_output/error_logs/Venturelli_in_vitro_flux_sampling/Test_" + str(test_num)
-        #os.makedirs(error_dir, exist_ok=True)
-
-        job_log_dir = os.path.join(plot_dir_path_base, "job_output", "out_logs")
-        error_log_dir = os.path.join(plot_dir_path_base, "job_output", "error_logs")
-        lsf_script_dir = os.path.join(plot_dir_path_base, "lsf_scripts")
-
-        os.makedirs(job_log_dir, exist_ok=True)
-        os.makedirs(error_log_dir, exist_ok=True)
-        os.makedirs(lsf_script_dir, exist_ok=True)
-
-        script_path = '/home/hayden.gallo-umw/DySCoMeMo_master_branch/glv_dfba/gLV_FBA_Venturelli_sims_panGenus_parallel_hpc.py'
         n_submitted = 0
-        job_name = 'test'
-        for i in range(n_total):
-            spec_exp_name = m2_init_abun.index.to_list()[i]
-            exp_dir = os.path.join(plot_dir_path_base, spec_exp_name)
-            result_path = os.path.join(exp_dir, "result.pkl")
+        this_script_path = os.path.abspath(__file__)
+        for j in range(0, num_sims):
 
-            if os.path.exists(result_path):
-                print(f"sim {i} ({spec_exp_name}) already has a result, skipping")
-                continue
+            job_log_dir = os.path.join(plot_dir_path_base, "job_output", "out_logs")
+            error_log_dir = os.path.join(plot_dir_path_base, "job_output", "error_logs")
+            lsf_script_dir = os.path.join(plot_dir_path_base, "lsf_scripts")
 
-            unique_job_name = f"{job_name}_{i}"
-            batch_script = os.path.join(lsf_script_dir, f"{unique_job_name}.lsf")
+            os.makedirs(job_log_dir, exist_ok=True)
+            os.makedirs(error_log_dir, exist_ok=True)
+            os.makedirs(lsf_script_dir, exist_ok=True)
 
-            batch_content = textwrap.dedent(f"""\
-#!/bin/bash
-#BSUB -J {unique_job_name}
-#BSUB -o {job_log_dir}/{unique_job_name}.%J.out
-#BSUB -e {error_log_dir}/{unique_job_name}.%J.err
-#BSUB -q long
-#BSUB -W 72:00
-#BSUB -n 1
-#BSUB -R "span[hosts=1]"
-#BSUB -R "rusage[mem=2GB]"
+            script_path = '/home/hayden.gallo-umw/DySCoMeMo_master_branch/glv_dfba/gLV_FBA_Venturelli_sims_panGenus_parallel_hpc.py'
+            
+            for i in range(n_total):
+                spec_exp_name = m2_init_abun.index.to_list()[i]
+                exp_dir = os.path.join(plot_dir_path_base, spec_exp_name)
+                result_name = 'sim_'+ str(j) + '_result.pkl'
+                result_path = os.path.join(exp_dir,result_name)
 
-python {script_path} --sim-idx {i}
-""")
+                if os.path.exists(result_path):
+                    print(f"draw {j} sim {i} ({spec_exp_name}) already has a result, skipping")
+                    continue
 
-            with open(batch_script, 'w') as f:
-                f.write(batch_content)
+                unique_job_name = f"{spec_exp_name}_test_{test_num}_sim_{j}"
+                batch_script = os.path.join(lsf_script_dir, f"{unique_job_name}.lsf")
 
-            try:
-                with open(batch_script) as f:
-                    subprocess.run(["bsub"], stdin=f, check=True)
-                print(f"Submitted job for sim {i} ({spec_exp_name})")
-                n_submitted += 1
-            except subprocess.CalledProcessError as e:
-                print(f"Failed to submit job for sim {i}: {e}")
-                continue
+                batch_content = textwrap.dedent(f"""\
+    #!/bin/bash
+    #BSUB -J {unique_job_name}
+    #BSUB -o {job_log_dir}/{unique_job_name}.%J.out
+    #BSUB -e {error_log_dir}/{unique_job_name}.%J.err
+    #BSUB -q long
+    #BSUB -W 72:00
+    #BSUB -n 2
+    #BSUB -R "span[hosts=1]"
+    #BSUB -R "rusage[mem=3GB]"
 
-            if n_submitted % 1000 == 0 and n_submitted != 0:
-                time.sleep(750)
+    python {script_path} --sim-idx {i} --sim-num {j}
+    """)
 
-        print(f"\nSubmitted {n_submitted} jobs (skipped {n_total - n_submitted} already-complete).")
+                with open(batch_script, 'w') as f:
+                    f.write(batch_content)
+
+                try:
+                    with open(batch_script) as f:
+                        subprocess.run(["bsub"], stdin=f, check=True)
+                    print(f"Submitted job {j} for sim ({spec_exp_name})")
+                    n_submitted += 1
+                except subprocess.CalledProcessError as e:
+                    print(f"Failed to submit job for sim {spec_exp_name}: {e}")
+                    continue
+
+                if n_submitted % 1000 == 0 and n_submitted != 0:
+                    ## cool for 5 minutes 
+                    time_library.sleep(300)
+
+            print(f"\nSubmitted {n_submitted} jobs (skipped {n_total*num_sims - n_submitted} already-complete).")

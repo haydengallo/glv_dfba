@@ -342,7 +342,7 @@ def opt_host_model(host_model, met_pool_df, translation_dict_bigg_to_modelseed, 
 
 ### this is to be run after optimization step 
 
-def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_pt, model_names, flux_sampling, calc_neg_consumption, this_is_stable_t):
+def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_pt, model_names, flux_sampling, calc_neg_consumption, this_is_stable_t, AGORA_models):
 
     ### just set delta_t equal to 1 for now 
 
@@ -505,10 +505,14 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
             #logging.info(f'Status of pfba: {temp_pfba.status}')
             #logging.info(f'fba: {sol_fba}')
 
-            # use next line when using kbase models
-            sol_fba_fluxes = sol_fba.fluxes.to_frame().filter(regex='EX_.*_b$|bio', axis = 0)
+       
             # use this next line when using agora models
-            #sol_fba_fluxes = sol_fba.fluxes.to_frame().filter(regex='EX_|bio', axis = 0)
+            if AGORA_models = 'yes':
+                sol_fba_fluxes = sol_fba.fluxes.to_frame().filter(regex='EX_|bio', axis = 0)
+            
+            else:
+                 # use next line when using kbase models
+                sol_fba_fluxes = sol_fba.fluxes.to_frame().filter(regex='EX_.*_b$|bio', axis = 0)
 
             # secreted should have negative sign to align with normal FBA
             test_secrete = sol_fba_fluxes[sol_fba_fluxes['fluxes'] > 0]
@@ -542,10 +546,13 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
             logging.info(f'uptake: {temp_uptake}')
 
             ### use next line if using AGORA models
-            #if fba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound:
+            if fba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound and AGORA_models = 'yes':
+                logging.warning(f'Upper bound not reached:')
+                logging.warning(f'Upper_bound: {model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound}')
+                logging.warning(f'Obj val: {fba_obj_val}')
             #if fba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound:
             ### use next line if using Kbase models
-            if fba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = 'bio1').upper_bound:
+            if fba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = 'bio1').upper_bound and AGORA_models != 'yes':
                 #print('Upper bound not reached:')
                 #print('Upper_bound:',model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound)
                 #print('Obj val', pfba_obj_val)
@@ -559,19 +566,24 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
             #print(fba_obj_val)
             if flux_sampling == True and fba_obj_val > 0:
                 #print(fba_obj_val)
-                # this is for kbase models
-                #model_abun_dict[key]['model'].reactions.bio1.lower_bound = 0.95 * fba_obj_val
-                # this is for cobra models
-                model_abun_dict[key]['model'].reactions.biomassPan.lower_bound = 0.95 * fba_obj_val
 
-                model_flux_samp = cobra.sampling.sample(model_abun_dict[key]['model'], 1)
+                if AGORA_models = 'yes':
+                    # this is for cobra models
+                    model_abun_dict[key]['model'].reactions.biomassPan.lower_bound = 0.99 * fba_obj_val
+                    model_flux_samp = cobra.sampling.sample(model_abun_dict[key]['model'], 1)
+                    model_flux_samp = model_flux_samp.T
+                    ### this is for AGORA models, pan specifically
+                    model_flux_samp = model_flux_samp.filter(regex = 'EX_|bio', axis = 0)
+                else:
+                    # this is for kbase models
+                    model_abun_dict[key]['model'].reactions.bio1.lower_bound = 0.99 * fba_obj_val
+                    model_flux_samp = cobra.sampling.sample(model_abun_dict[key]['model'], 1)
+                    model_flux_samp = model_flux_samp.T
 
-                model_flux_samp = model_flux_samp.T
+                     ### this is for kbase models
+                    model_flux_samp = model_flux_samp.filter(regex = 'EX_.*_b|bio', axis = 0)
+ 
 
-                ### this is for kbase models
-                #model_flux_samp = model_flux_samp.filter(regex = 'EX_.*_b|bio', axis = 0)
-                ### this is for AGORA models, pan specifically
-                model_flux_samp = model_flux_samp.filter(regex = 'EX_|bio', axis = 0)
                 #model_flux_samp.reset_index(inplace=True)
 
                 model_flux_samp.columns = ['fluxes']
@@ -586,11 +598,13 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                 fba_obj_val = filtered['fluxes'].iloc[0]
 
                 ### need to reset the lower bound back to zero afterwards 
-                ### this is for kbase models
-                #model_abun_dict[key]['model'].reactions.bio1.lower_bound = 0
-                ### this is for agora models
-                model_abun_dict[key]['model'].reactions.biomassPan.lower_bound = 0
-
+                if AGORA_models = 'yes':
+                    ### this is for agora models
+                    model_abun_dict[key]['model'].reactions.biomassPan.lower_bound = 0
+                else:
+                    ### this is for kbase models
+                    model_abun_dict[key]['model'].reactions.bio1.lower_bound = 0
+                
 
 
             if model_abun_dict[key]['curr_gr_rt'] < 0:
@@ -835,10 +849,13 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                 #print('Print medium used for optimization:',model_abun_dict[key]['model'].medium)
                 ## seem to have some infeasible solutions, unclear why 
                 # put fluxes in df for manipulation
-                # use this with Kbase models
-                temp_pfba_df = temp_pfba.to_frame().filter(regex='EX_.*_b$|bio', axis = 0)
-                # use this with AGORA models
-                #temp_pfba_df = temp_pfba.to_frame().filter(regex='EX_|bio', axis = 0)
+                if AGORA_models = 'yes':
+                    # use this with AGORA models
+                    temp_pfba_df = temp_pfba.to_frame().filter(regex='EX_|bio', axis = 0)
+                else:
+                    # use this with Kbase models
+                    temp_pfba_df = temp_pfba.to_frame().filter(regex='EX_.*_b$|bio', axis = 0)
+                
                 
                 # filter out fluxes that are secreted
                 # signs are flipped here compared to standard fba optimization in cobrapy so must change them
@@ -899,10 +916,13 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
 
                 sol_fba = model_abun_dict[key]['model'].optimize()
 
-                 # use next line when using kbase models
-                sol_fba_fluxes = sol_fba.fluxes.to_frame().filter(regex='EX_.*_b$|bio', axis = 0)
-                # use this next line when using agora models
-                #sol_fba_fluxes = sol_fba.fluxes.to_frame().filter(regex='EX_|bio', axis = 0)
+                if AGORA_models = 'yes':
+                    # use this next line when using agora models
+                    sol_fba_fluxes = sol_fba.fluxes.to_frame().filter(regex='EX_|bio', axis = 0)
+                else:
+                    # use next line when using kbase models
+                    sol_fba_fluxes = sol_fba.fluxes.to_frame().filter(regex='EX_.*_b$|bio', axis = 0)
+                
 
                 # secreted should have negative sign to align with normal FBA
                 test_secrete = sol_fba_fluxes[sol_fba_fluxes['fluxes'] > 0]
@@ -924,22 +944,22 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                     fba_obj_val = filtered['fluxes'].iloc[0]
 
                 if flux_sampling == True and fba_obj_val > 0:
-                    #print(fba_obj_val)
-                    # this is for kbase models
-                    #model_abun_dict[key]['model'].reactions.bio1.lower_bound = 0.95 * fba_obj_val
-                    # this is for cobra models
-                    model_abun_dict[key]['model'].reactions.biomassPan.lower_bound = 0.95 * fba_obj_val
 
-                    model_flux_samp = cobra.sampling.sample(model_abun_dict[key]['model'], 1)
 
-                    model_flux_samp = model_flux_samp.T
-
-                    ### this is for kbase models
-                    #model_flux_samp = model_flux_samp.filter(regex = 'EX_.*_b|bio', axis = 0)
-                    ### this is for AGORA models, pan specifically
-                    model_flux_samp = model_flux_samp.filter(regex = 'EX_|bio', axis = 0)
-                    #model_flux_samp.reset_index(inplace=True)
-                    #model_flux_samp.reset_index(inplace=True)
+                    if AGORA_models = 'yes':
+                        # this is for cobra models
+                        model_abun_dict[key]['model'].reactions.biomassPan.lower_bound = 0.99 * fba_obj_val
+                        model_flux_samp = cobra.sampling.sample(model_abun_dict[key]['model'], 1)
+                        model_flux_samp = model_flux_samp.T
+                        ### this is for AGORA models, pan specifically
+                        model_flux_samp = model_flux_samp.filter(regex = 'EX_|bio', axis = 0)
+                    else:
+                        # this is for kbase models
+                        model_abun_dict[key]['model'].reactions.bio1.lower_bound = 0.99 * fba_obj_val
+                        model_flux_samp = cobra.sampling.sample(model_abun_dict[key]['model'], 1)
+                        model_flux_samp = model_flux_samp.T
+                        ### this is for kbase models
+                        model_flux_samp = model_flux_samp.filter(regex = 'EX_.*_b|bio', axis = 0)
 
                     model_flux_samp.columns = ['fluxes']
                     
@@ -953,10 +973,14 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                     fba_obj_val = filtered['fluxes'].iloc[0]
 
                     ### need to reset the lower bound back to zero afterwards 
-                    ### this is for kbase models
-                    #model_abun_dict[key]['model'].reactions.bio1.lower_bound = 0
-                    ### this is for agora models
-                    model_abun_dict[key]['model'].reactions.biomassPan.lower_bound = 0
+                    if AGORA_models = 'yes':
+                        ### this is for agora models
+                        model_abun_dict[key]['model'].reactions.biomassPan.lower_bound = 0
+                    else:
+
+                        ### this is for kbase models
+                        model_abun_dict[key]['model'].reactions.bio1.lower_bound = 0
+                    
 
                 ### Don't want to update abundance until i know it's correct and fluxes don't go negative ###
                 
@@ -1494,7 +1518,7 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
 
         # Step 4. Adjust model optimization output fluxes based on abundance and time step size
 
-        total_sys_uptake, total_sys_secretion, met_pool_dict = model_opt_out(model_abun_dict=model_abun_dict, delta_t= (total_sim_time/num_t_steps), pfba=pfba, glv_params=glv_params, t_pt=i, model_names = list_model_names, met_pool_dict=met_pool_dict, flux_sampling=flux_sampling, calc_neg_consumption = calc_neg_consumption, this_is_stable_t=this_is_stable_t)
+        total_sys_uptake, total_sys_secretion, met_pool_dict = model_opt_out(model_abun_dict=model_abun_dict, delta_t= (total_sim_time/num_t_steps), pfba=pfba, glv_params=glv_params, t_pt=i, model_names = list_model_names, met_pool_dict=met_pool_dict, flux_sampling=flux_sampling, calc_neg_consumption = calc_neg_consumption, this_is_stable_t=this_is_stable_t, AGORA_models = AGORA_models)
 
         #print('this is met pool dict returned after model opt out step', met_pool_dict)
         ### should actually move this update_met_pool function within model_opt_out so as to be done after every optimization of species 
