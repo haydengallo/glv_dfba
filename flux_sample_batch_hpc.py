@@ -39,7 +39,7 @@ import subprocess
 ### script for running glv_dfba inference
 from helper_functions import *
 
-test_num = 5
+test_num = 7
 
 
 # Job and file paths
