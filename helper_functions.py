@@ -595,7 +595,11 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                 temp_secrete = -1.0*(test_secrete['fluxes']) * delta_t * model_abun_dict[key]['abun']
 
                 filtered = test_secrete.filter(regex='bio', axis=0)
-                fba_obj_val = filtered['fluxes'].iloc[0]
+                if filtered.empty:
+                    fba_obj_val = 0
+                else:
+                    fba_obj_val = filtered['fluxes'].iloc[0]
+                #fba_obj_val = filtered['fluxes'].iloc[0]
 
                 ### need to reset the lower bound back to zero afterwards 
                 if AGORA_models == 'yes':
@@ -970,7 +974,11 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                     temp_secrete = -1.0*(test_secrete['fluxes']) * delta_t * model_abun_dict[key]['abun']
 
                     filtered = test_secrete.filter(regex='bio', axis=0)
-                    fba_obj_val = filtered['fluxes'].iloc[0]
+                    if filtered.empty:
+                        fba_obj_val = 0
+                    else:
+                        fba_obj_val = filtered['fluxes'].iloc[0]
+                    #fba_obj_val = filtered['fluxes'].iloc[0]
 
                     ### need to reset the lower bound back to zero afterwards 
                     if AGORA_models == 'yes':
