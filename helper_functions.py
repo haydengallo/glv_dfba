@@ -540,6 +540,7 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
             if model_abun_dict[key]['curr_gr_rt'] <= 0 or fba_obj_val == 0:
                 temp_uptake = pd.DataFrame()
                 temp_secrete = pd.DataFrame()
+                fba_obj_val = 0
 
             logging.info(f'fba obj val: {fba_obj_val}')
             logging.info(f'secrete: {temp_secrete}')

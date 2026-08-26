@@ -61,8 +61,8 @@ logging.getLogger("cobra").setLevel(logging.ERROR)
 
 #subject_dict = {1953:1948, 1507:1510, 1999:2000}
 #subject_dict = {1953:1948}
-subject_dict = {1507:1510}
-#subject_dict = {1999:2000}
+#subject_dict = {1507:1510}
+subject_dict = {1999:2000}
 
 for key in subject_dict.keys():
 
@@ -285,7 +285,7 @@ for key in subject_dict.keys():
     RC_diet_met_df.columns = ['reaction', 'fluxValue']
 
     ### Translate metabolites in diet and initial conditions back to Kbase nomenclature b/c going to use kbase reconstructions instead of translated models
-    rc_diet_MS_convert = rc_diet_MS_convert[['compounds', 'maxflux']]
+    rc_diet_MS_convert = rc_diet_MS_convert[['compounds', 'maxflux']].copy()
     rc_diet_MS_convert.columns = ['reaction', 'fluxValue']
 
     ### manually add 19 minimal metabolites to the RC_diet
@@ -309,7 +309,7 @@ for key in subject_dict.keys():
     for i in metabolomics_data_initial_sub_1948.iloc[:,1:].T.index.tolist():
         cmpd_names.append(bigg_to_modelseed[i])
 
-    metabolomics_data_initial_sub_1948 = metabolomics_data_initial_sub_1948.iloc[:,1:].T
+    metabolomics_data_initial_sub_1948 = metabolomics_data_initial_sub_1948.iloc[:,1:].T.copy()
 
     metabolomics_data_initial_sub_1948.index = cmpd_names
     metabolomics_data_initial_sub_1948.reset_index(inplace=True)
@@ -317,12 +317,16 @@ for key in subject_dict.keys():
 
     metabolomics_data_initial_sub_1948
 
-    for i in range(0, len(metabolomics_data_initial_sub_1948)):
-        metabolomics_data_initial_sub_1948['reaction'].iloc[i] = 'EX_' + metabolomics_data_initial_sub_1948['reaction'].iloc[i]  + '_b'
+    #for i in range(0, len(metabolomics_data_initial_sub_1948)):
+    #    metabolomics_data_initial_sub_1948['reaction'].iloc[i] = 'EX_' + metabolomics_data_initial_sub_1948['reaction'].iloc[i]  + '_b'
+
+    metabolomics_data_initial_sub_1948['reaction'] = 'EX_' + metabolomics_data_initial_sub_1948['reaction'] + '_b'
+
+    rc_diet_MS_convert['reaction'] = 'EX_' + rc_diet_MS_convert['reaction'] + '_b'
 
     
-    for i in range(0, len(rc_diet_MS_convert)):
-        rc_diet_MS_convert['reaction'].iloc[i]  = 'EX_' + rc_diet_MS_convert['reaction'].iloc[i]  + '_b'
+    #for i in range(0, len(rc_diet_MS_convert)):
+    #    rc_diet_MS_convert['reaction'].iloc[i]  = 'EX_' + rc_diet_MS_convert['reaction'].iloc[i]  + '_b'
     
     diet_scaler = (5/time_scaler)
 
