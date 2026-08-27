@@ -948,6 +948,32 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                 else:
                     fba_obj_val = filtered['fluxes'].iloc[0]
 
+                if model_abun_dict[key]['curr_gr_rt'] <= 0 or fba_obj_val == 0:
+                    temp_uptake = pd.DataFrame()
+                    temp_secrete = pd.DataFrame()
+                    fba_obj_val = 0
+
+                logging.info(f'fba obj val: {fba_obj_val}')
+                logging.info(f'secrete: {temp_secrete}')
+                logging.info(f'uptake: {temp_uptake}')
+
+                ### use next line if using AGORA models
+                if AGORA_models == 'yes' and fba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound:
+                    logging.warning(f'Upper bound not reached:')
+                    logging.warning(f'Upper_bound: {model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound}')
+                    logging.warning(f'Obj val: {fba_obj_val}')
+                #if fba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound:
+                ### use next line if using Kbase models
+                if AGORA_models != 'yes' and fba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = 'bio1').upper_bound:
+                    #print('Upper bound not reached:')
+                    #print('Upper_bound:',model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound)
+                    #print('Obj val', pfba_obj_val)
+                    logging.warning(f'Upper bound not reached:')
+                    logging.warning(f'Upper_bound: {model_abun_dict[key]['model'].reactions.get_by_id(id = 'bio1').upper_bound}')
+                    #logging.warning(f'Upper_bound: {model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound}')
+                    #logging.warning(f'Upper_bound: {model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound}')
+                    logging.warning(f'Obj val: {fba_obj_val}')
+
                 if flux_sampling == True and fba_obj_val > 0:
 
 

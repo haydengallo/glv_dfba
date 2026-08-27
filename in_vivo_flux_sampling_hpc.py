@@ -60,9 +60,9 @@ logging.getLogger("cobra").setLevel(logging.ERROR)
 #################################################################################################################################################################
 
 #subject_dict = {1953:1948, 1507:1510, 1999:2000}
-#subject_dict = {1953:1948}
+subject_dict = {1953:1948}
 #subject_dict = {1507:1510}
-subject_dict = {1999:2000}
+#subject_dict = {1999:2000}
 
 for key in subject_dict.keys():
 
@@ -80,7 +80,7 @@ for key in subject_dict.keys():
     total_time_steps = 415
     ### Simulation notes
 
-    notes = 'Updating/fixing stability analysis to explicitly test for being in fixed point neighborhood 8/5/26 host at 1g , scale factor of 1e11, non scaled diet, explicitly add host fluxes to the output, upper bound of host is 0.5, not constrained to original met pool, stable t points with .001 and 0.9 prob, testing flux sampling'
+    notes = 'Updating/fixing stability analysis to explicitly test for being in fixed point neighborhood 8/5/26 host at 1g , scale factor of 1e11, non scaled diet, explicitly add host fluxes to the output, upper bound of host is 0.5, not constrained to original met pool, stable t points with .0001 and 0.9 prob, testing flux sampling, not saving figs'
     use_glv_params = 'no'
 
     if use_glv_params == 'yes':
@@ -154,7 +154,7 @@ for key in subject_dict.keys():
     growths = np.load('growths_50_samps_08_05_2026.npy')
     
     num_abx_tpoints = len(bi_hourly_resolution_latent_traj.T.loc['-3.0':'0.0',:])
-    stability_prob, stable_t_points = stability_analysis_main(bi_hourly_resolution_latent_traj, interactions, growths, .001, .9, perturbations, num_abx_tpoints)
+    stability_prob, stable_t_points = stability_analysis_main(bi_hourly_resolution_latent_traj, interactions, growths, .0001, .9, perturbations, num_abx_tpoints)
     #stable_t_points = []
 
     ### filter metabolomics data by initial sample
@@ -454,7 +454,7 @@ for key in subject_dict.keys():
     sns.lineplot(data=FBA_biomass_df_plot, x='time', y='count', hue = 'FeatureID')
     plt.yscale('log')
     plot_file_name = plot_dir_path + '/Subject_' + str(subject_to_plot) + '_abundances_over_time_test_' + str(test_num) + '.pdf'
-    plt.savefig(plot_file_name, bbox_inches="tight")
+    #plt.savefig(plot_file_name, bbox_inches="tight")
     #plt.show()
 
 
@@ -501,7 +501,7 @@ for key in subject_dict.keys():
     sns.lineplot(data=met_pool_over_time_df_melt, x='Time', y='Concentration', hue = 'Metabolite')
     plt.yscale('log')
     plot_file_name = plot_dir_path + '/Subject_' + str(subject_to_plot) + '_metabolites_over_time_test_' + str(test_num) + '.pdf'
-    plt.savefig(plot_file_name, bbox_inches="tight")
+    #plt.savefig(plot_file_name, bbox_inches="tight")
     #plt.show()
 
     ### Stacked plots 
@@ -678,7 +678,7 @@ for key in subject_dict.keys():
     plt.suptitle(overall_title, x=0.6, fontsize = 20)
     plt.subplots_adjust(right=0.75)
     second_plot_file_name = plot_dir_path + '/Subject_' + str(subject_to_plot) + '_stacked_hist_line_plots_FBA_' + str(test_num) + '.pdf'
-    plt.savefig(second_plot_file_name, bbox_inches="tight")
+    #plt.savefig(second_plot_file_name, bbox_inches="tight")
     #plt.show()
     plt.close()
 
@@ -700,7 +700,7 @@ for key in subject_dict.keys():
     plt.legend(['Exp_data', 'nothing', 'MDSINE', 'nothing', 'MDSINE-FBA'])
     plt.yscale('log')
     plot_file_name = plot_dir_path + '/Subject_' + str(subject_to_plot) + '_comparison_abs_abun_' + str(test_num) + '.pdf'
-    plt.savefig(plot_file_name, bbox_inches="tight")
+    #plt.savefig(plot_file_name, bbox_inches="tight")
 
 
     ### Here plot the metabolomics data 
@@ -752,7 +752,7 @@ for key in subject_dict.keys():
     sns.lineplot(data=met_pool_over_time_df_melt_filt, x='Time', y='Concentration', hue = 'Metabolite')
     plt.yscale('log')
     plot_file_name = plot_dir_path + '/Subject_' + str(subject_to_plot) + '_metabolites_over_time_test_filt' + str(test_num) + '.pdf'
-    plt.savefig(plot_file_name, bbox_inches="tight")
+    #plt.savefig(plot_file_name, bbox_inches="tight")
     #plt.show()
     plt.close()
 
@@ -904,7 +904,7 @@ for key in subject_dict.keys():
     plt.suptitle(overall_title, x=0.6, fontsize = 20)
     plt.subplots_adjust(right=0.75)
     plot_file_name = plot_dir_path + '/Subject_' + str(subject_to_plot) + '_mets_exp_vs_sim_over_time_test_' + str(test_num) + '.pdf'
-    plt.savefig(plot_file_name, bbox_inches="tight")
+    #plt.savefig(plot_file_name, bbox_inches="tight")
     #plt.show()
     plt.close()
 
@@ -977,7 +977,7 @@ for key in subject_dict.keys():
 
 
     plot_file_name = plot_dir_path + '/Subject_' + str(subject_to_plot) + '_mets_exp_vs_sim_individual_scatterplots_' + str(test_num) + '.pdf'
-    plt.savefig(plot_file_name, bbox_inches="tight")
+    #plt.savefig(plot_file_name, bbox_inches="tight")
 
 ##############################
 ### Here save the rmse csv ###
@@ -1062,7 +1062,7 @@ for key in subject_dict.keys():
     plt.suptitle(overall_title, x=0.6, fontsize = 20)
     plt.subplots_adjust(right=0.75)
     plot_file_name = plot_dir_path + '/Subject_' + str(subject_to_plot) + '_mets_scatter_exp_vs_sim_' + str(test_num) + '.pdf'
-    plt.savefig(plot_file_name, bbox_inches="tight")
+    #plt.savefig(plot_file_name, bbox_inches="tight")
     #plt.show()
     plt.close()
 
@@ -1127,7 +1127,7 @@ for key in subject_dict.keys():
     plt.suptitle(overall_title, x=0.5, fontsize = 24)
     plt.subplots_adjust(right=0.75)
     plot_file_name = plot_dir_path + '/Subject_' + str(subject_to_plot) + '_mets_scatter_exp_vs_sim_log_scale_' + str(test_num) + '.pdf'
-    plt.savefig(plot_file_name, bbox_inches="tight")
+    #plt.savefig(plot_file_name, bbox_inches="tight")
     #plt.show()
     plt.close()
 
