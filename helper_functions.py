@@ -570,14 +570,14 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
 
                 if AGORA_models == 'yes':
                     # this is for cobra models
-                    model_abun_dict[key]['model'].reactions.biomassPan.lower_bound = 0.99 * fba_obj_val
+                    model_abun_dict[key]['model'].reactions.biomassPan.lower_bound = 0.95 * fba_obj_val
                     model_flux_samp = cobra.sampling.sample(model_abun_dict[key]['model'], 1)
                     model_flux_samp = model_flux_samp.T
                     ### this is for AGORA models, pan specifically
                     model_flux_samp = model_flux_samp.filter(regex = 'EX_|bio', axis = 0)
                 else:
                     # this is for kbase models
-                    model_abun_dict[key]['model'].reactions.bio1.lower_bound = 0.99 * fba_obj_val
+                    model_abun_dict[key]['model'].reactions.bio1.lower_bound = 0.95 * fba_obj_val
                     model_flux_samp = cobra.sampling.sample(model_abun_dict[key]['model'], 1)
                     model_flux_samp = model_flux_samp.T
 
@@ -979,14 +979,14 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
 
                     if AGORA_models == 'yes':
                         # this is for cobra models
-                        model_abun_dict[key]['model'].reactions.biomassPan.lower_bound = 0.99 * fba_obj_val
+                        model_abun_dict[key]['model'].reactions.biomassPan.lower_bound = 0.95 * fba_obj_val
                         model_flux_samp = cobra.sampling.sample(model_abun_dict[key]['model'], 1)
                         model_flux_samp = model_flux_samp.T
                         ### this is for AGORA models, pan specifically
                         model_flux_samp = model_flux_samp.filter(regex = 'EX_|bio', axis = 0)
                     else:
                         # this is for kbase models
-                        model_abun_dict[key]['model'].reactions.bio1.lower_bound = 0.99 * fba_obj_val
+                        model_abun_dict[key]['model'].reactions.bio1.lower_bound = 0.95 * fba_obj_val
                         model_flux_samp = cobra.sampling.sample(model_abun_dict[key]['model'], 1)
                         model_flux_samp = model_flux_samp.T
                         ### this is for kbase models
@@ -1311,7 +1311,7 @@ def opt_model(model_abun_dict, pfba):
 
 ### this is the main function that wraps all other helper functions ### 
 
-def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time, num_t_steps, glv_out, glv_params, environ_cond, pfba, MDSINE_rates, Diet, output_file_path, flux_sampling, host, random_constraints, AGORA_models, calc_neg_consumption, stable_t_points):
+def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time, num_t_steps, glv_out, glv_params, environ_cond, pfba, MDSINE_rates, Diet, output_file_path, flux_sampling, host, random_constraints, AGORA_models, calc_neg_consumption, stable_t_points, dfba_traditional):
 
     ###############################
     ### Here start logging file ###
@@ -1524,13 +1524,34 @@ def static_dfba(list_model_names, list_models, initial_abundance, total_sim_time
 
         # Step 2. Change upper bounds of biomass growth rate for each model
         # Step 2a. This is for when utilizing output from MDSINE and not utilizing glv_params
-        if glv_params == None:
+        if dfba_traditional == True:
+            biomass_pattern = re.compile(r'(bio)', re.IGNORECASE)
+            for count, key in enumerate(model_abun_dict):
 
-            #print('Using MDSINE rates')
-            change_biomass_bounds_MDSINE(model_abun_dict=model_abun_dict, t_pt=i, MDSINE_rates=MDSINE_rates)
+                ### skip if the host is the key
+                if key == 'host':
+                    continue
+                
+
+                biomass_reactions = [rxn for rxn in model_abun_dict[key]['model'].reactions if biomass_pattern.search(rxn.id)]
+                biomass_reactions = str(biomass_reactions[-1]).split(':')[0]
+
+                ### Add current growth rate to dict for each model
+
+                #model_abun_dict[key]['curr_gr_rt'] = gr_rt_t_pt[count]
+                logging.info(f"This is the model: {key}")
+                logging.info(f"This model is using traditional dFBA growth maximization")
+
+                ### Now test if given growth rate should be supplied to upper bound of biomass reaction
+                model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound = 1000
+
+        elif glv_params == None:
+
+                #print('Using MDSINE rates')
+                change_biomass_bounds_MDSINE(model_abun_dict=model_abun_dict, t_pt=i, MDSINE_rates=MDSINE_rates)
         else:
-        # Step 2b: This is for when utilizing output from gLV directly such that params are needed    
-            change_biomass_bounds(model_abun_dict=model_abun_dict, glv_params=glv_params, t_pt=i)
+            # Step 2b: This is for when utilizing output from gLV directly such that params are needed    
+                change_biomass_bounds(model_abun_dict=model_abun_dict, glv_params=glv_params, t_pt=i)
 
 
         if len(stable_t_points) == 0:#None

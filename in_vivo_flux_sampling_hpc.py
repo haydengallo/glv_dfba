@@ -60,9 +60,9 @@ logging.getLogger("cobra").setLevel(logging.ERROR)
 #################################################################################################################################################################
 
 #subject_dict = {1953:1948, 1507:1510, 1999:2000}
-subject_dict = {1953:1948}
+#subject_dict = {1953:1948}
 #subject_dict = {1507:1510}
-#subject_dict = {1999:2000}
+subject_dict = {1999:2000}
 
 for key in subject_dict.keys():
 
@@ -80,7 +80,7 @@ for key in subject_dict.keys():
     total_time_steps = 415
     ### Simulation notes
 
-    notes = 'Updating/fixing stability analysis to explicitly test for being in fixed point neighborhood 8/5/26 host at 1g , scale factor of 1e11, non scaled diet, explicitly add host fluxes to the output, upper bound of host is 0.5, not constrained to original met pool, stable t points with .0001 and 0.9 prob, testing flux sampling, not saving figs'
+    notes = 'Updating/fixing stability analysis to explicitly test for being in fixed point neighborhood 8/5/26 host at 1g , scale factor of 1e11, non scaled diet, explicitly add host fluxes to the output, upper bound of host is 0.5, not constrained to original met pool, stable t points with .0001 and 0.9 prob, testing flux sampling, not saving figs, 0.95 bound for flux sampling here'
     use_glv_params = 'no'
 
     if use_glv_params == 'yes':
