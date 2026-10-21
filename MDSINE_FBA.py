@@ -37,7 +37,7 @@ for key in subject_dict.keys():
     ### subject to predict, subject with metabolomics data
     subject_to_predict = subject_dict[key]
     ### Set test num
-    test_num = 17
+    test_num = 2
     ### set time scaler
     time_scaler = 24
     ### Scaling factor
@@ -46,7 +46,7 @@ for key in subject_dict.keys():
     total_time_steps = 415
     ### Simulation notes
 
-    notes = 'Updating/fixing stability analysis to explicitly test for being in fixed point neighborhood 8/5/26 host at 1g , scale factor of 1e11, non scaled diet, explicitly add host fluxes to the output, upper bound of host is 0.5, not constrained to original met pool, no stable timepoints'
+    notes = 'host at 1g , scale factor of 1e11, non scaled diet, explicitly add host fluxes to the output, upper bound of host is 0.5, not constrained to original met pool, no stable t points, final runs'
     use_glv_params = 'no'
 
     if use_glv_params == 'yes':
@@ -59,7 +59,7 @@ for key in subject_dict.keys():
 
     #plot_dir_path = '/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun/MDSINE_vs_Exp_plots_' + output_folder + '/test_' + str(test_num) + '/Subject_' + str(subject_to_plot)
     # plot_dir_path = '/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun/new_constraints_test_MDSINE_vs_Exp_plots_' + output_folder + '/test_' + str(test_num) + '/Subject_' + str(subject_to_plot)
-    plot_dir_path = '/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun/more_final_tests_MDSINE_vs_Exp_plots_' + output_folder + '/test_' + str(test_num) + '/Subject_' + str(subject_to_plot)
+    plot_dir_path = '/Users/haydengallo/UMass_Dropbox/Dropbox (UMass Medical School)/Bucci_Lab/glv_FBA/gLV_FBA_test_Kennedy_et_al_2025/processed_data_filtered_RC_all_cohorts_corrected_abs_abun/final_runs_MDSINE_vs_Exp_plots_' + output_folder + '/test_' + str(test_num) + '/Subject_' + str(subject_to_plot)
 
 
     plot_dir = Path(plot_dir_path)
@@ -114,7 +114,7 @@ for key in subject_dict.keys():
     growths = np.load('growths_50_samps_08_05_2026.npy')
     
     num_abx_tpoints = len(bi_hourly_resolution_latent_traj.T.loc['-3.0':'0.0',:])
-    stability_prob, stable_t_points = stability_analysis_main(bi_hourly_resolution_latent_traj, interactions, growths, .001, .9, perturbations, num_abx_tpoints)
+    stability_prob, stable_t_points = stability_analysis_main(bi_hourly_resolution_latent_traj, interactions, growths, .0001, .9, perturbations, num_abx_tpoints)
     stable_t_points = []
 
     ### filter metabolomics data by initial sample

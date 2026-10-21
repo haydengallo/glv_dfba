@@ -395,8 +395,15 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
             # put fluxes in df for manipulation
 
             ### switch out regex string with 'EX_' if using AGORA models###
+
+            if AGORA_models == 'yes':
+                temp_pfba_df = temp_pfba.fluxes.to_frame().filter(regex='EX_|bio', axis = 0)
+            
+            else:
+                 # use next line when using kbase models
+                temp_pfba_df = temp_pfba.fluxes.to_frame().filter(regex='EX_.*_b$|bio', axis = 0)
             #temp_pfba_df = temp_pfba.to_frame().filter(regex='EX_.*_b$|bio', axis = 0)
-            temp_pfba_df = temp_pfba.to_frame().filter(regex='EX_|bio', axis = 0)
+            #temp_pfba_df = temp_pfba.to_frame().filter(regex='EX_|bio', axis = 0)
             
             # filter out fluxes that are secreted
             # signs are flipped here compared to standard fba optimization in cobrapy so must change them
@@ -419,17 +426,45 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                 pfba_obj_val = 0
             else:
                 pfba_obj_val = filtered['fluxes'].iloc[0]
+
+
+            if model_abun_dict[key]['curr_gr_rt'] <= 0 or pfba_obj_val == 0:
+                temp_uptake = pd.DataFrame()
+                temp_secrete = pd.DataFrame()
+                pfba_obj_val = 0
+
+            logging.info(f'fba obj val: {pfba_obj_val}')
+            logging.info(f'secrete: {temp_secrete}')
+            logging.info(f'uptake: {temp_uptake}')
             #if model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound < 1e-8:
             #    pfba_obj_val = 0
             #else:
             #    pfba_obj_val = test_secrete.filter(regex='bio', axis=0)['fluxes'].iloc[0]
-            if pfba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound:
+            #if pfba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound:
+                #print('Upper bound not reached:')
+                #print('Upper_bound:',model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound)
+                #print('Obj val', pfba_obj_val)
+            #    logging.warning(f'Upper bound not reached:')
+            #    logging.warning(f'Upper_bound: {model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound}')
+            #    logging.warning(f'Obj val: {pfba_obj_val}')
+        
+            ### use next line if using AGORA models
+            if AGORA_models == 'yes' and pfba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound:
+                logging.warning(f'Upper bound not reached:')
+                logging.warning(f'Upper_bound: {model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound}')
+                logging.warning(f'Obj val: {pfba_obj_val}')
+            #if fba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound:
+            ### use next line if using Kbase models
+            if AGORA_models != 'yes' and pfba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = 'bio1').upper_bound:
                 #print('Upper bound not reached:')
                 #print('Upper_bound:',model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound)
                 #print('Obj val', pfba_obj_val)
                 logging.warning(f'Upper bound not reached:')
-                logging.warning(f'Upper_bound: {model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound}')
+                logging.warning(f'Upper_bound: {model_abun_dict[key]['model'].reactions.get_by_id(id = 'bio1').upper_bound}')
+                #logging.warning(f'Upper_bound: {model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound}')
+                #logging.warning(f'Upper_bound: {model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound}')
                 logging.warning(f'Obj val: {pfba_obj_val}')
+
             ## have to do this after confirming that no negative values were created
             #model_abun_dict[key]['abun'] = model_abun_dict[key]['abun'] + (delta_t*pfba_obj_val)
                 
@@ -594,6 +629,9 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
 
                 temp_uptake = np.abs(test_uptake['fluxes']) * delta_t * model_abun_dict[key]['abun']
                 temp_secrete = -1.0*(test_secrete['fluxes']) * delta_t * model_abun_dict[key]['abun']
+
+                logging.info(f'flux samp secrete: {temp_secrete}')
+                logging.info(f'flux samp uptake: {temp_uptake}')
 
                 filtered = test_secrete.filter(regex='bio', axis=0)
                 if filtered.empty:
@@ -883,18 +921,56 @@ def model_opt_out(model_abun_dict, delta_t, pfba, met_pool_dict, glv_params, t_p
                     pfba_obj_val = 0
                 else:
                     pfba_obj_val = filtered['fluxes'].iloc[0]
+
+                if model_abun_dict[key]['curr_gr_rt'] <= 0 or pfba_obj_val == 0:
+                    temp_uptake = pd.DataFrame()
+                    temp_secrete = pd.DataFrame()
+                    pfba_obj_val = 0
+
+                logging.info(f'fba obj val: {pfba_obj_val}')
+                logging.info(f'secrete: {temp_secrete}')
+                logging.info(f'uptake: {temp_uptake}')
+                #if model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound < 1e-8:
+                #    pfba_obj_val = 0
+                #else:
+                #    pfba_obj_val = test_secrete.filter(regex='bio', axis=0)['fluxes'].iloc[0]
+                #if pfba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound:
+                    #print('Upper bound not reached:')
+                    #print('Upper_bound:',model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound)
+                    #print('Obj val', pfba_obj_val)
+                #    logging.warning(f'Upper bound not reached:')
+                #    logging.warning(f'Upper_bound: {model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound}')
+                #    logging.warning(f'Obj val: {pfba_obj_val}')
+            
+                ### use next line if using AGORA models
+                if AGORA_models == 'yes' and pfba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound:
+                    logging.warning(f'Upper bound not reached:')
+                    logging.warning(f'Upper_bound: {model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound}')
+                    logging.warning(f'Obj val: {pfba_obj_val}')
+                #if fba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound:
+                ### use next line if using Kbase models
+                if AGORA_models != 'yes' and pfba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = 'bio1').upper_bound:
+                    #print('Upper bound not reached:')
+                    #print('Upper_bound:',model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound)
+                    #print('Obj val', pfba_obj_val)
+                    logging.warning(f'Upper bound not reached:')
+                    logging.warning(f'Upper_bound: {model_abun_dict[key]['model'].reactions.get_by_id(id = 'bio1').upper_bound}')
+                    #logging.warning(f'Upper_bound: {model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound}')
+                    #logging.warning(f'Upper_bound: {model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound}')
+                    logging.warning(f'Obj val: {pfba_obj_val}')
+                
                 #if model_abun_dict[key]['model'].reactions.get_by_id(id = 'biomassPan').upper_bound < 1e-8:
                 #    pfba_obj_val = 0
                 #else:
                 #    pfba_obj_val = test_secrete.filter(regex='bio', axis=0)['fluxes'].iloc[0]
 
-                if pfba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound:
+                #if pfba_obj_val != model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound:
                     #print('Upper bound not reached:')
                     #print('Upper_bound:',model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound)
                     #print('Obj val', pfba_obj_val)
-                    logging.warning(f'Upper bound not reached:')
-                    logging.warning(f'Upper_bound: {model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound}')
-                    logging.warning(f'Obj val: {pfba_obj_val}')
+                    #logging.warning(f'Upper bound not reached:')
+                    #logging.warning(f'Upper_bound: {model_abun_dict[key]['model'].reactions.get_by_id(id = biomass_reactions).upper_bound}')
+                    #logging.warning(f'Obj val: {pfba_obj_val}')
 
                 ### Adjust abundances such that if negative growth rate abundance does decrease according to negative growth rate of MDSINE, but if positive abun adjusts according to FBA output
 

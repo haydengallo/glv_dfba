@@ -51,6 +51,8 @@ import logging
 from scipy.stats import pearsonr, spearmanr
 from tqdm import tqdm
 
+import pickle
+
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -91,12 +93,12 @@ else:
     #test_name = 'panGenusmodel_sims'
     #test_name = 'panSpeciesmodel_sims'
     ## adding this for flux sampling etc
-    test_name = 'panGenusmodel_flux_samp_sims'
+    test_name = 'panGenusmodel_interpolated_tests'
 
 
 
  ### Simulation notes
-notes = 'nothing changed from final sims in original paper, here now testing to make sure the flux sampling works with the in vitro sims and then will transfer to HPC for batching '
+notes = 'nothing changed from final sims in original paper, here now testing to make sure the flux sampling works with the in vitro sims and then will transfer to HPC for batching, trying full latent with pfba'
 #notes = 'just testing again with the 1.0 growth rate metabolites and long sim, nothing else changed, here now testing to make sure the flux sampling works with the in vitro sims and then will transfer to HPC for batching '
 # notes = 'doing ivp static dataset with numerical tolerance fix now, think now i can get around numerical tolerance, testing to see if i can get around numerical tolerance issues etc, think i have been able to save bacterial abundance at everytime point so latent trajectory with longitudinal dataset,trying to get better save output for bacterial abun in mutli timpepoint sims, using forward sim for longitudainl dataset instead of interpolated values, doing forward simulations using settings from test_44 of long dataset, so regular fba with some oxygen, no scaling, oxygen back to 0.1, just adding compoujnds from relaxed fba at 0.1, so everything additional wasnt in original media, remoevd lines that dont allow uptake of butyrate and succiante, regular fba, Adding relaxed fba compounds when growth rate is 0.3 which is consistent with MICOM'
 #notes = 'fba now,for some reason seems in cobrapy need cgly for a caccae to grow, pan genus models, adding compounds required for each model to reach growth rate of 1, these compounds added at 1.0, regular fba, extra oxygen at 10'
@@ -307,7 +309,9 @@ else:
     m2_final_abun_met  = m2_final_abun_met[['Butyrate', 'Acetate', 'Lactate', 'Succinate']]
     #m2_final_abun_bac = m2_final_abun_bac.drop(columns = ['Butyrate', 'Acetate', 'Lactate', 'Succinate'])
 
-
+    with open('/Users/haydengallo/UMass Medical School Dropbox/Hayden Gallo/Bucci_Lab/glv_FBA/Venturelli_data/interpolated_values.pkl', 'rb') as file:
+    # Load the control structure or data back into a variable
+        interpolated_data = pickle.load(file)
 time = np.linspace(0,t_steps,t_steps+1)
 args = (int_matrix, growth_rates)
 
@@ -1125,6 +1129,8 @@ def run_simulations(i):
     else:    
         m2_final_abun_bac_filt = m2_final_abun_bac.iloc[sim_to_grab,:]
         m2_final_abun_met_filt = m2_final_abun_met.iloc[sim_to_grab,:]
+
+        sol = np.array(interpolated_data[spec_exp_name])
     
     ### basically can't just filter by bacteria at zero, b/c MDSINE2 doesn't start at values of zero, rather very small numbers like 1e-7 for species that aren't techincally present, so filter by things greater than 1e-5
     #if multi_t_pt_dataset == 'yes':
@@ -1180,6 +1186,8 @@ def run_simulations(i):
         print('This is the order given: ', checking_order_list)
         raise ValueError(f"Model order mismatch for simulation {i}")
     
+    stable_t_points = []
+    
     # Run FBA simulation
     met_pool_over_time, model_abun_dict, mets_used_for_constraint = static_dfba(
         list_model_names=correct_model_name_order_current_sim,
@@ -1190,16 +1198,16 @@ def run_simulations(i):
         glv_out=np.array(glv_abun_df),
         glv_params=None,
         environ_cond=defined_media_df,
-        pfba=False,
+        pfba=True,
         MDSINE_rates=rate_df,
         Diet=pd.DataFrame(),
         output_file_path=plot_dir_path_spec_exp,
-        flux_sampling=True,
+        flux_sampling=False,
         host=None,
         random_constraints='No',
         AGORA_models='yes',
 	    calc_neg_consumption='no',
-        stable_t_points = None
+        stable_t_points = stable_t_points
     )
 
     met_save = plot_dir_path_spec_exp + '/met_pool.npy'
@@ -1326,7 +1334,7 @@ def run_simulations(i):
 
 if __name__ == "__main__":
     # Determine number of workers (leave 1-2 cores free for system)
-    n_jobs = 1#max(1, multiprocessing.cpu_count()) - 2
+    n_jobs = max(1, multiprocessing.cpu_count()) - 2
     
     print(f"Starting {len(m2_init_abun)} simulations using {n_jobs} parallel workers...")
     print(f"Output directory: {plot_dir_path_base}")
