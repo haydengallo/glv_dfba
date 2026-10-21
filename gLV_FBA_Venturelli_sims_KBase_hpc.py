@@ -78,21 +78,25 @@ data_input_dir = data_dir + 'data_input'
 
 ### Downloaded KBase models. Files are matched to strains by the text before the first "_"
 ### in the file name (e.g. BT_monoculture_gf.xml -> BT). Supported: .json, .xml, .sbml, .mat
-kbase_models_dir = data_input_dir + '/kbase_models'
+cobra_models_dir_path = data_input_dir + '/kbase_recon_10_20_2026_no_succ_import_BT_BL_fix'
+cobra_models_dir = Path(cobra_models_dir_path)
 BIOMASS_ID = 'bio1'
 
 ### Exchange reaction naming in the downloaded models
 EX_FMT = "EX_{cpd}_b"
 
-scal_fac = 1
+MONOCULTURES_ONLY = False 
+DFBA_TRADITIONAL = False
+
+scal_fac = 5
 t_steps = 48
 
-test_num = 1
+test_num = 43
 multi_t_pt_dataset = 'no'
 
 ### Simulation mode
 FLUX_SAMPLING = True            # False = pfba (as in the desktop KBase script); True = flux sampling
-USE_INTERPOLATED_TRAJ = True     # single-timepoint data: use interpolated MDSINE2 trajectories (desktop behavior)
+USE_INTERPOLATED_TRAJ = False     # single-timepoint data: use interpolated MDSINE2 trajectories (desktop behavior)
 AGORA_MODELS_FLAG = 'no'        # passed to static_dfba as in your desktop script; set to what helper_functions expects for KBase models
 MAKE_PLOTS = False
 SAVE_NPY = False                  # save met_pool.npy / abun_save.npy per experiment
@@ -102,7 +106,7 @@ if multi_t_pt_dataset == 'yes':
 else:
     test_name = 'KBase_model_sims'
 
-notes = ('KBase monoculture-fitted GEMs (growth-rate + exometabolite gapfilling), ModelSEED base media, '
+notes = ('with scaling factor of 5, testing with all experiments and testing to see if i can quickly convert dysco over to using traditional dfba growth maximization had to fix BT and BL, increasing thiamin etc, running monocultures, using interpolated trajectories and 10/20 models, add non limiting amount of co2 testing monoculture of 10/13/26 models, adding coprococcus comes from earlier using 10/8/26 recons all 5 sims experiments KBase monoculture-fitted GEMs (growth-rate + exometabolite gapfilling), ModelSEED base media, monoculture only '
          f'{"flux sampling" if FLUX_SAMPLING else "pfba"}, HPC batch')
 
 plot_dir_path_base = data_dir + test_name + '/test_' + str(test_num)
@@ -270,13 +274,13 @@ defined_media_cpd = {
     "cpd00099": -14.45186396,    # Cl-
     "cpd00244": -0.01543217,     # Ni2+
     "cpd00034": -0.061931009,    # Zn2+
-    "cpd00644": -0.000419695,    # Pantothenate
+    "cpd00644": -100,#-0.000419695,    # Pantothenate
     "cpd00635": -1.47561e-06,    # Cobalamin
     "cpd00263": -0.000972583,    # Pyridoxine
     "cpd00067": -0.001565646,    # H+
     "cpd00220": -1.000531406,    # Riboflavin
     "cpd00087": -2.80628e-06,    # Tetrahydrofolate
-    "cpd00305": -0.000593064,    # Thiamin
+    "cpd00305": -100,#-0.000593064,    # Thiamin
     "cpd00443": -0.073072918,    # 4-Aminobenzoate
     "cpd00218": -0.021,          # Pyridoxamine
     "cpd00013": -9.347366847,    # NH3/NH4+
@@ -315,6 +319,7 @@ defined_media_cpd = {
     "cpd00159": -28.30817052,    # L-Lactate
     "cpd00179": -4.382120947,    # Maltose
     "cpd00001": -55.50645091,    # H2O
+    "cpd00011": -100.0            # CO2
 }
 
 defined_media = {EX_FMT.format(cpd=c): v for c, v in defined_media_cpd.items()}
@@ -329,81 +334,83 @@ defined_media_df['fluxValue'] = -1.0 * defined_media_df['fluxValue']
 ### Load KBase models        ###
 ################################
 
-_MODEL_LOADERS = {
-    '.json': cobra.io.load_json_model,
-    '.xml': cobra.io.read_sbml_model,
-    '.sbml': cobra.io.read_sbml_model,
-    '.mat': cobra.io.load_matlab_model,
-}
+cobra_models = sorted(cobra_models_dir.glob('*.sbml'))
+cobra_models = {f.stem : f for f in cobra_models}
 
-def load_kbase_models(models_dir):
-    models = {}
-    for f in sorted(Path(models_dir).iterdir()):
-        loader = _MODEL_LOADERS.get(f.suffix.lower())
-        code = f.stem.split('_')[0]
-        if loader is None or code not in allspecies:
-            continue
-        if code in models:
-            print(f'[warn] more than one model file for {code}; keeping the first, ignoring {f.name}')
-            continue
-        model = loader(str(f))
-        if BIOMASS_ID in model.reactions:
-            model.objective = BIOMASS_ID
-        else:
-            print(f'[warn] {f.name}: no reaction {BIOMASS_ID}; keeping objective from file')
-        models[code] = model
-    return models
+### Just loading the models needed in 
 
-kbase_models = load_kbase_models(kbase_models_dir)
-missing_models = [s for s in allspecies if s not in kbase_models]
-print(f'Loaded {len(kbase_models)} KBase models from {kbase_models_dir}')
-if missing_models:
-    print('No model file for (experiments containing these species are skipped):', missing_models)
+loaded_models = {}
+
+#count = 0
+
+for key in cobra_models:
+    #if count == 1:
+    #    break
+    #print(key.split('_'))
+    model_name = key.split('_')[0] + '_' + key.split('_')[1]
+    #model_name = key.split('.')[0]
+    #model_name = model_name[3:]
+    #print(model_name)
+    model = cobra.io.read_sbml_model(cobra_models[key])
+    loaded_models[model_name] = model
+    #count+=1
+
 
 adjusted_names = []
+
 for key in namedict:
     temp = namedict[key].split('_')
-    adjusted_names.append(temp[0] + '_' + temp[1])
+    temp_name = temp[0] + '_' + temp[1]
+    adjusted_names.append(temp_name)
 
 adjusted_names_dict = dict(zip(namedict.keys(), adjusted_names))
 reverse_order_name_dict = dict(zip(adjusted_names, namedict.keys()))
 
-correct_model_name_order = [adjusted_names_dict[s] for s in allspecies]
-correct_model_list = [kbase_models.get(s) for s in allspecies]   # None where no model
-correct_model_dict_order = {adjusted_names_dict[s]: m for s, m in kbase_models.items()}
+correct_model_dict_order = {}
+correct_model_name_order = []
 
-### Readable names for exchange reactions (all-metabolite plot)
-EX_NAMES = {}
-for m in kbase_models.values():
-    for r in m.exchanges:
-        EX_NAMES.setdefault(r.id, next(iter(r.metabolites)).name)
 
-### Sanity checks on exchange naming
-all_ex = set(EX_NAMES)
-media_hits = sum(r in all_ex for r in defined_media)
-print(f'Media: {media_hits}/{len(defined_media)} reactions found as exchanges in at least one model')
-for name, ex in SCFA_EXCHANGES.items():
-    have = [c for c, m in kbase_models.items() if ex in m.reactions]
-    print(f'{name:10s} {ex}: present in {len(have)} models')
+for i in allspecies:
+    model_to_grab = adjusted_names_dict[i]
+    #model_to_grab_genus = model_to_grab.split('_')[0]
+    print(model_to_grab)
+    correct_model_dict_order[model_to_grab] = loaded_models[model_to_grab]
+    correct_model_name_order.append(model_to_grab)
+
+print(correct_model_name_order)
+
 
 ### Experiments that can run (every present species has a model)
+#exp_names = m2_init_abun.index.to_list()
+#n_total = len(m2_init_abun)
+#runnable_sims, skipped_sims = [], {}
+#for i in range(n_total):
+    #init = np.array(m2_init_abun.iloc[i, :].to_list())
+    #present = [m2_init_abun.columns[k] for k in np.where(init != 0)[0]]
+    #xlacking = [s for s in present if s not in kbase_models]
+
+#    runnable_sims.append(i)
+#print(f'{len(runnable_sims)}/{n_total} experiments runnable')
+
 exp_names = m2_init_abun.index.to_list()
 n_total = len(m2_init_abun)
 runnable_sims, skipped_sims = [], {}
 for i in range(n_total):
-    init = np.array(m2_init_abun.iloc[i, :].to_list())
-    present = [m2_init_abun.columns[k] for k in np.where(init != 0)[0]]
-    lacking = [s for s in present if s not in kbase_models]
-    if lacking:
-        skipped_sims[exp_names[i]] = lacking
-    else:
-        runnable_sims.append(i)
+    row = pd.to_numeric(m2_init_abun.iloc[i, :], errors='coerce').fillna(0)
+    present = row.index[row != 0].tolist()
+    if MONOCULTURES_ONLY and len(present) != 1:
+        continue
+    runnable_sims.append(i)
 print(f'{len(runnable_sims)}/{n_total} experiments runnable')
+
+
+
+
+
 
 param_save = {'Sim_num': test_num, 'Scaling_factor': scal_fac, 'Total_time_steps': t_steps,
               'notes': notes, 'flux_sampling': FLUX_SAMPLING, 'ex_fmt': EX_FMT,
-              'models_dir': kbase_models_dir, 'missing_models': missing_models,
-              'skipped_experiments': skipped_sims}
+              'models_dir': cobra_models_dir_path}
 with open(plot_dir_path_base + '/params.txt', 'w') as file:
     file.write(json.dumps(param_save))
 
@@ -598,6 +605,8 @@ def create_plots(FBA_biomass_df, glv_biomass_df, met_pool_over_time,
 def run_simulations(i, draw=0):
     """Run a single simulation (experiment i, draw `draw`). Outputs go to <exp>/draw_<draw>/."""
 
+    models_list = [copy.deepcopy(model) for model in list(correct_model_dict_order.values())]
+
     sim_to_grab = i
     spec_exp_name = exp_names[sim_to_grab]
 
@@ -633,24 +642,29 @@ def run_simulations(i, draw=0):
     rate_df = rate_df.iloc[bac_to_keep_for_inf, :]
     init_abun_scaled = list((init_abun / scal_fac)[bac_to_keep_for_inf])
     correct_model_name_order_current_sim = [correct_model_name_order[k] for k in bac_to_keep_for_inf]
-    # Deep copies of only the models this experiment needs
-    models_list_current_sim = [copy.deepcopy(correct_model_list[k]) for k in bac_to_keep_for_inf]
+    models_list_current_sim = list(np.array(models_list)[bac_to_keep_for_inf])
     glv_abun_df = glv_abun_df / scal_fac
 
-    # Set media and report growth on it
-    for j, mdl in enumerate(models_list_current_sim):
-        mdl.medium = make_media(mdl, defined_media_df)
-        growth = mdl.slim_optimize(error_value=0)
-        flag = '' if growth > 1e-6 else '   <-- no growth on base media'
-        print(f'{spec_exp_name}: {correct_model_name_order_current_sim[j]} growth {growth:.4g}{flag}')
-
+     # Set media conditions for each model
+    for j in range(0, len(models_list_current_sim)):
+        test_media = make_media(models_list_current_sim[j], defined_media_df)
+        models_list_current_sim[j].medium = test_media
+        print(models_list_current_sim[j].slim_optimize())
+        print(models_list_current_sim[j].medium)
+        print(correct_model_name_order_current_sim[j])
+    
     # Verify model order
-    filt_columns_list_names = m2_init_abun.iloc[:, bac_to_keep_for_inf].columns.to_list()
+    filt_columns_list_names = m2_init_abun.iloc[:,bac_to_keep_for_inf].columns.to_list()
     checking_order_list = [adjusted_names_dict[name] for name in filt_columns_list_names]
-    if checking_order_list != correct_model_name_order_current_sim:
-        print('This is correct order of models: ', correct_model_name_order_current_sim)
+    
+    if checking_order_list == correct_model_name_order_current_sim:
+        print('yes, the order and identity of GEMs selected for inference is correct')
+    else:
+        print('no good')
+        print('This is correct order of models: ',correct_model_name_order_current_sim)
         print('This is the order given: ', checking_order_list)
         raise ValueError(f"Model order mismatch for simulation {i}")
+    
 
     met_pool_over_time, model_abun_dict, mets_used_for_constraint = static_dfba(
         list_model_names=correct_model_name_order_current_sim,
@@ -670,7 +684,8 @@ def run_simulations(i, draw=0):
         random_constraints='No',
         AGORA_models=AGORA_MODELS_FLAG,
         calc_neg_consumption='no',
-        stable_t_points=None if FLUX_SAMPLING else []
+        stable_t_points=[],
+        dfba_traditional = DFBA_TRADITIONAL
     )
 
     if SAVE_NPY:
@@ -783,7 +798,152 @@ def aggregate_results(n_draws):
     bac_final.to_csv(abun_path)
     met_final.to_csv(met_path)
     print(f'Saved:\n  {abun_path}\n  {met_path}' + ('  (mean over draws)' if n_draws > 1 else ''))
+    ### final sim vs exp figures -- only made here, not in worker jobs
+    make_sim_vs_exp_plots(bac_final, met_final, met_draws=met_draws)
 
+def _corr_stats(exp_vals, sim_vals):
+    """Pearson + Spearman on finite pairs. NaN-safe, returns dict + cleaned arrays."""
+    x = np.asarray(exp_vals, dtype=float)
+    y = np.asarray(sim_vals, dtype=float)
+    ok = np.isfinite(x) & np.isfinite(y)
+    x, y = x[ok], y[ok]
+    out = {'n': len(x),
+           'n_sim_zero': int(np.sum(y == 0)),
+           'n_exp_zero': int(np.sum(x == 0))}
+    if len(x) < 3 or np.std(x) == 0 or np.std(y) == 0:
+        out.update(pearson_r=np.nan, pearson_p=np.nan, spearman_r=np.nan, spearman_p=np.nan)
+        return out, x, y
+    pr = pearsonr(x, y)
+    sr = spearmanr(x, y)
+    out.update(pearson_r=pr[0], pearson_p=pr[1], spearman_r=sr[0], spearman_p=sr[1])
+    return out, x, y
+
+
+def _identity_line(ax, x, y):
+    hi = max(np.max(x) if len(x) else 0, np.max(y) if len(y) else 0)
+    ax.plot([0, hi], [0, hi], color='black', lw=1, zorder=0)
+
+
+def make_sim_vs_exp_plots(bac_final, met_final, met_draws=None):
+    """
+    Final simulated-vs-experimental figures. Called once from aggregate_results,
+    so worker jobs never produce these.
+
+    bac_final / met_final are copies of the experimental templates, so their
+    index and columns already align with m2_final_abun_bac / m2_final_abun_met.
+    Experiments that were never run are all-NaN and get dropped.
+    """
+    ### ---------------- metabolites ----------------
+    met_sim = met_final.dropna(how='all')
+    met_exp = m2_final_abun_met.loc[met_sim.index, met_sim.columns]
+        ### long form: one row per (experiment, metabolite, draw), for seaborn's CI
+    met_long = None
+    if met_draws is not None and len(met_draws) > 1:
+        frames = []
+        for k, d in enumerate(met_draws):
+            lf = d.loc[met_sim.index].melt(ignore_index=False).reset_index()
+            lf.columns = ['Experiments', 'Metabolite', 'sim']
+            lf['draw'] = k
+            frames.append(lf)
+        met_long = pd.concat(frames, ignore_index=True).dropna(subset=['sim'])
+        ex = met_exp.melt(ignore_index=False).reset_index()
+        ex.columns = ['Experiments', 'Metabolite', 'exp']
+        met_long = met_long.merge(ex, on=['Experiments', 'Metabolite'])
+
+    n_met = len(met_sim.columns)
+    fig, axes = plt.subplots(2, 2, figsize=(10, 10), constrained_layout=True)
+    axes = axes.flatten()
+    stat_rows = []
+
+    for i, name in enumerate(met_sim.columns):
+        ax = axes[i]
+        stats, x, y = _corr_stats(met_exp[name], met_sim[name])
+        stats['variable'] = name
+        stat_rows.append(stats)
+
+        #sns.scatterplot(ax=ax, x=x, y=y, s=28, alpha=0.75, edgecolor='none')
+        #if stats['n'] >= 3 and np.std(x) > 0:
+        #    sns.regplot(ax=ax, x=x, y=y, scatter=False, line_kws={'lw': 1.5})
+        #_identity_line(ax, x, y)
+                ### points + bootstrapped 95% CI straight from the per-draw table
+        drew_ci = False
+        if met_long is not None:
+            sub = met_long[met_long['Metabolite'] == name]
+            if len(sub):
+                sns.lineplot(data=sub, x='exp', y='sim', ax=ax,
+                             errorbar=('ci', 95), err_style='bars',
+                             marker='o', markersize=5, linestyle='none',
+                             err_kws={'elinewidth': 0.8, 'capsize': 0},
+                             estimator='mean', alpha=0.8, zorder=2)
+                drew_ci = True
+        if not drew_ci:
+            sns.scatterplot(ax=ax, x=x, y=y, s=28, alpha=0.75, edgecolor='none')
+        if stats['n'] >= 3 and np.std(x) > 0:
+            sns.regplot(ax=ax, x=x, y=y, scatter=False, line_kws={'lw': 1.5})
+        _identity_line(ax, x, y)
+
+        ax.set_title(f"{name}\n"
+                     f"Pearson {stats['pearson_r']:.3f} (p={stats['pearson_p']:.3g})   "
+                     f"Spearman {stats['spearman_r']:.3f}\n"
+                     f"n={stats['n']}, sim zeros={stats['n_sim_zero']}",
+                     fontsize=10)
+        ax.set_xlabel('Experimental Conc (mM)')
+        ax.set_ylabel('Simulated Conc (mM)')
+
+    for j in range(n_met, len(axes)):
+        fig.delaxes(axes[j])
+
+    subtitle = 'monocultures' if MONOCULTURES_ONLY else 'all experiments'
+    fig.suptitle(f'Experimental vs Simulated Concentrations ({subtitle})')
+    met_fig_path = os.path.join(plot_dir_path_base, 'final_sim_vs_exp_metabolites.pdf')
+    fig.savefig(met_fig_path, bbox_inches='tight')
+    plt.close(fig)
+
+    ### ---------------- abundance ----------------
+    abun_sim = bac_final.dropna(how='all')
+    abun_exp = m2_final_abun_bac.loc[abun_sim.index, abun_sim.columns]
+
+    sim_melt = abun_sim.melt(ignore_index=False).reset_index()
+    sim_melt.columns = ['Experiments', 'Species', 'OD_sim']
+    exp_melt = abun_exp.melt(ignore_index=False).reset_index()
+    exp_melt.columns = ['Experiments', 'Species', 'OD_exp']
+    merged = exp_melt.merge(sim_melt, on=['Experiments', 'Species'])
+
+    ### species absent from an experiment carry no information about fit
+    n_before = len(merged)
+    merged = merged[merged['OD_exp'] > 0]
+    n_dropped = n_before - len(merged)
+
+    abun_stats, x, y = _corr_stats(merged['OD_exp'], merged['OD_sim'])
+    abun_stats['variable'] = 'Abundance'
+    stat_rows.append(abun_stats)
+
+    fig, ax = plt.subplots(figsize=(6.5, 6))
+    if merged['Species'].nunique() <= 30:
+        sns.scatterplot(data=merged, x='OD_exp', y='OD_sim', hue='Species', ax=ax,
+                        s=30, alpha=0.8, edgecolor='none')
+        ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left', fontsize=7, ncol=2)
+    else:
+        sns.scatterplot(data=merged, x='OD_exp', y='OD_sim', ax=ax, s=30, alpha=0.7,
+                        edgecolor='none')
+    if abun_stats['n'] >= 3:
+        sns.regplot(data=merged, x='OD_exp', y='OD_sim', scatter=False, ax=ax,
+                    line_kws={'lw': 1.5})
+    _identity_line(ax, merged['OD_exp'].to_numpy(), merged['OD_sim'].to_numpy())
+
+    ax.set_xlabel('Experimental OD')
+    ax.set_ylabel('Simulated OD')
+    ax.set_title(f"Experimental vs Simulated Abundance ({subtitle})\n"
+                 f"Pearson {abun_stats['pearson_r']:.3f} (p={abun_stats['pearson_p']:.3g})   "
+                 f"Spearman {abun_stats['spearman_r']:.3f}   n={abun_stats['n']}")
+    abun_fig_path = os.path.join(plot_dir_path_base, 'final_sim_vs_exp_abundance.pdf')
+    fig.savefig(abun_fig_path, bbox_inches='tight')
+    plt.close(fig)
+
+    print(f'Plots:\n  {met_fig_path}\n  {abun_fig_path}')
+    print(f'  ({len(met_sim)} experiments plotted; '
+          f'{n_dropped} abundance rows dropped where OD_exp == 0)')
+    print(pd.DataFrame(stat_rows).set_index('variable').to_string())
 
 if __name__ == "__main__":
     import textwrap
@@ -816,8 +976,8 @@ if __name__ == "__main__":
         sim_idx = cli_args.sim_idx
         if not (0 <= sim_idx < n_total):
             raise IndexError(f"sim_idx {sim_idx} out of range [0, {n_total})")
-        if sim_idx not in runnable_sims:
-            raise ValueError(f"{exp_names[sim_idx]} needs models not available: {skipped_sims[exp_names[sim_idx]]}")
+        #if sim_idx not in runnable_sims:
+        #    raise ValueError(f"{exp_names[sim_idx]} needs models not available: {skipped_sims[exp_names[sim_idx]]}")
 
         spec_exp_name = exp_names[sim_idx]
         result_path = result_path_for(sim_idx, num_sims)
@@ -840,8 +1000,8 @@ if __name__ == "__main__":
         os.makedirs(error_log_dir, exist_ok=True)
         os.makedirs(lsf_script_dir, exist_ok=True)
 
-        if skipped_sims:
-            print(f"Not submitting {len(skipped_sims)} experiments with missing models (see params.txt)")
+        #if skipped_sims:
+            #print(f"Not submitting {len(skipped_sims)} experiments with missing models (see params.txt)")
 
         n_submitted, n_existing = 0, 0
         for j in range(0, num_sims):
@@ -861,9 +1021,9 @@ if __name__ == "__main__":
     #BSUB -e {error_log_dir}/{unique_job_name}.%J.err
     #BSUB -q long
     #BSUB -W 72:00
-    #BSUB -n 2
+    #BSUB -n 1
     #BSUB -R "span[hosts=1]"
-    #BSUB -R "rusage[mem=3GB]"
+    #BSUB -R "rusage[mem=4GB]"
 
     cd {os.path.dirname(this_script_path)}
     python {this_script_path} --sim-idx {i} --sim-num {j}
@@ -884,6 +1044,6 @@ if __name__ == "__main__":
                 if n_submitted % 1000 == 0 and n_submitted != 0:
                     time_library.sleep(300)   # cool down for 5 minutes
 
-        print(f"\nSubmitted {n_submitted} jobs ({n_existing} already complete, "
-              f"{len(skipped_sims) * num_sims} skipped for missing models).")
+        print(f"\nSubmitted {n_submitted} jobs (skipped {n_total*num_sims - n_submitted} already-complete).")
+
         print(f"When jobs finish: python {this_script_path} --aggregate --sim-num {num_sims}")
